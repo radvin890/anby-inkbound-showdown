@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Game, type GameState, type GameStats, type InputState } from "@/game/engine";
 import { Sfx } from "@/game/audio";
+import { characterForKey, type CharacterId } from "@/game/characters";
+import { Button } from "@/components/ui/button";
 
 type Key = keyof InputState;
 const KEYMAP: Record<string, Key> = {
@@ -11,7 +13,8 @@ const KEYMAP: Record<string, Key> = {
 const CONTROLS: [string, string][] = [
   ["A / D or ← →", "Move"],
   ["Space", "Jump (hold for higher)"],
-  ["J", "Fire energy slashes"],
+  ["J", "Anby: sword / Nicole: ether cannon"],
+  ["1 / 2", "Switch to Anby / Nicole"],
   ["K", "Dash — invincible for a moment"],
   ["Esc", "Pause"],
 ];
@@ -27,18 +30,22 @@ export function InkboundGame() {
   const [seenTutorial, setSeenTutorial] = useState(false);
   const [muted, setMuted] = useState(false);
   const [touch, setTouch] = useState(false);
+  const [activeCharacter, setActiveCharacter] = useState<CharacterId>("anby");
 
   useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
     const sfx = new Sfx();
     sfxRef.current = sfx;
-    const g = new Game(canvasRef.current!, inputRef.current, sfx, (s, st) => {
+    const g = new Game(canvas, inputRef.current, sfx, (s, st) => {
       setState(s);
+      setActiveCharacter(g.activeCharacter);
       if (st) setStats(st);
     });
     gameRef.current = g;
     g.run();
     setTouch(window.matchMedia("(pointer: coarse)").matches);
-    const onBlur = () => g.pause();
+    const onBlur = () => { Object.assign(inputRef.current, { left: false, right: false, jump: false, shoot: false, dash: false }); g.pause(); };
     window.addEventListener("blur", onBlur);
     return () => { g.destroy(); window.removeEventListener("blur", onBlur); };
   }, []);
@@ -53,10 +60,19 @@ export function InkboundGame() {
     sfxRef.current?.click();
     gameRef.current?.start();
   };
+  const switchTo = (character: CharacterId) => {
+    if (gameRef.current?.switchCharacter(character)) setActiveCharacter(character);
+  };
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       const g = gameRef.current;
+      const character = characterForKey(e.code, e.target);
+      if (character) {
+        if (g?.state === "playing") { e.preventDefault(); switchTo(character); }
+        return;
+      }
+      if (e.target instanceof HTMLElement && (e.target.isContentEditable || e.target.closest("input, textarea, select, [role='textbox']"))) return;
       if (e.code === "Escape") {
         if (g?.state === "playing") g.pause(); else if (g?.state === "paused") g.resume();
         return;
@@ -82,6 +98,13 @@ export function InkboundGame() {
   return (
     <div className="game-frame">
       <canvas ref={canvasRef} className="h-full w-full block" aria-label="Anby: Inkbound Showdown game canvas" />
+
+      {(state === "playing" || state === "paused") && (
+        <div className="character-switch" role="group" aria-label="Active character">
+          <Button variant="ghost" className="character-key" aria-pressed={activeCharacter === "anby"} disabled={state !== "playing"} onClick={() => switchTo("anby")}><kbd>1</kbd> Anby</Button>
+          <Button variant="ghost" className="character-key" aria-pressed={activeCharacter === "nicole"} disabled={state !== "playing"} onClick={() => switchTo("nicole")}><kbd>2</kbd> Nicole</Button>
+        </div>
+      )}
 
       {(state === "playing" || state === "paused") && (
         <div className="absolute right-3 top-3 flex gap-2">
@@ -154,7 +177,7 @@ export function InkboundGame() {
           </div>
           <div className="flex items-end gap-2">
             <TouchBtn k="dash" input={inputRef}>DASH</TouchBtn>
-            <TouchBtn k="shoot" input={inputRef}>FIRE</TouchBtn>
+            <TouchBtn k="shoot" input={inputRef}>{activeCharacter === "anby" ? "SLASH" : "FIRE"}</TouchBtn>
             <TouchBtn k="jump" input={inputRef} big>JUMP</TouchBtn>
           </div>
         </div>

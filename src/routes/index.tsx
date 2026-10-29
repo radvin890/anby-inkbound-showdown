@@ -5,9 +5,9 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "ANBY: Inkbound Showdown — Rubber-Hose Boss Fight" },
-      { name: "description", content: "A hand-drawn 1930s cartoon-style run-and-gun boss fight. Play as Anby against the clockwork teapot Maestro Kettlewind." },
+      { name: "description", content: "Switch between Anby's sword and Nicole's ether briefcase in a hand-drawn cartoon boss fight against Maestro Kettlewind." },
       { property: "og:title", content: "ANBY: Inkbound Showdown" },
-      { property: "og:description", content: "Run, jump, dash and slash through a three-phase vintage cartoon boss fight in your browser." },
+      { property: "og:description", content: "Team up as Anby and Nicole: switch instantly between sword melee and ranged ether attacks in a vintage cartoon boss fight." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],

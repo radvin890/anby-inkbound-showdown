@@ -64,6 +64,7 @@ export class Sfx {
   }
 
   shoot() { this.tone(1100 + Math.random() * 200, 0.06, "square", 0.035, 1700); }
+  slash() { this.noise(0.12, 0.2, 3200); this.tone(600, 0.1, "triangle", 0.08, 160); }
   jump() { this.tone(320, 0.16, "triangle", 0.18, 700); }
   dash() { this.noise(0.18, 0.25, 2400); this.tone(500, 0.12, "sine", 0.08, 1200); }
   hit() { this.tone(220, 0.05, "square", 0.04, 140); }
@@ -95,11 +96,13 @@ export class Sfx {
     while (this.nextNote < this.ctx.currentTime + 0.2) {
       const delay = this.nextNote - this.ctx.currentTime;
       const s = this.step % 16;
-      this.tone(bass[s], beat * 0.9, "triangle", 0.5, undefined, delay, this.musicGain);
+      const note = bass[s] ?? 65.4;
+      const musicGain = this.musicGain;
+      this.tone(note, beat * 0.9, "triangle", 0.5, undefined, delay, musicGain);
       this.noise(0.04, 0.12, 7000, delay + beat * 0.66, this.musicGain);
       if (s % 4 === 0) {
-        const root = bass[s] * 4;
-        [1, 1.19, 1.5].forEach((m) => this.tone(root * m, 0.18, "square", 0.04, undefined, delay + beat * 0.66, this.musicGain!));
+        const root = note * 4;
+        [1, 1.19, 1.5].forEach((m) => this.tone(root * m, 0.18, "square", 0.04, undefined, delay + beat * 0.66, musicGain));
       }
       this.nextNote += beat;
       this.step++;
