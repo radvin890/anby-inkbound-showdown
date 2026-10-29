@@ -3,3 +3,9 @@
 - [x] Add Anby melee and Nicole briefcase attacks with distinct artwork.
 - [x] Update keyboard, HUD, tutorial, and touch controls.
 - [x] Fix existing errors and verify combat and switching.
+
+# Knockout / tag-out
+- [ ] Add a locked 2.5-second cartoon knockout and automatic surviving-character tag-out.
+- [ ] Show Anby's temporary speech bubble and both characters' health/status.
+- [ ] Preserve encounter state, block knocked-out selection, and keep touch/keyboard controls functional.
+- [ ] Test both knockout orders, total defeat, boss preservation, and live gameplay.
