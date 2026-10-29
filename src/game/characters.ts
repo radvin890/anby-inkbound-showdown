@@ -1,4 +1,7 @@
 export type CharacterId = "anby" | "nicole";
+export const KNOCKOUT_SECONDS = 2.5;
+export const TAG_BUBBLE_SECONDS = 3.5;
+export const ANBY_TAG_MESSAGE = "I told you to be careful";
 
 export const CHARACTER_ATTACKS = {
   anby: { cooldown: 0.32, duration: 0.18, damage: 14, reach: 112 },

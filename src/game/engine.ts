@@ -1,5 +1,5 @@
 import type { Sfx } from "./audio";
-import { CHARACTER_ATTACKS, swordHitsBoss, type CharacterId } from "./characters";
+import { ANBY_TAG_MESSAGE, KNOCKOUT_SECONDS, TAG_BUBBLE_SECONDS, CHARACTER_ATTACKS, swordHitsBoss, type CharacterId } from "./characters";
 
 export const W = 960;
 export const H = 540;
@@ -67,6 +67,8 @@ export class Game {
   private shadows: { x: number; t: number }[] = [];
   private banner: { text: string; t: number; max: number; sub?: string } | null = null;
   private endTimer = -1;
+  private knockout: { character: CharacterId; elapsed: number } | null = null;
+  private speech: { character: CharacterId; text: string; remaining: number } | null = null;
   private ro: ResizeObserver;
 
   constructor(private canvas: HTMLCanvasElement, private input: InputState, private sfx: Sfx, private onState: (s: GameState, stats?: GameStats) => void) {
@@ -134,7 +136,7 @@ export class Game {
     const loop = (t: number) => {
       const dt = Math.min((t - this.last) / 1000, 1 / 30);
       this.last = t;
-      this.time += dt;
+      if (!this.knockout && this.state !== "paused") this.time += dt;
       if (this.state === "playing") this.update(dt);
       else if (this.state === "menu") this.attract(dt);
       this.render();
@@ -149,6 +151,8 @@ export class Game {
     this.activeCharacter = "anby";
     this.characters = { anby: this.newPlayer(), nicole: this.newPlayer() };
     this.melee = [];
+    this.knockout = null; this.speech = null;
+    this.clearInput();
     this.prev = { jump: false, dash: false };
     this.b = this.newBoss();
     this.bullets = []; this.eps = []; this.parts = []; this.ghosts = []; this.shadows = [];
@@ -158,10 +162,28 @@ export class Game {
     this.setState("playing");
   }
   pause() { if (this.state === "playing") { this.setState("paused"); this.sfx.stopMusic(); } }
-  resume() { if (this.state === "paused") { this.last = performance.now(); this.sfx.ensure(); this.sfx.startMusic(); this.setState("playing"); } }
-  toMenu() { this.sfx.stopMusic(); this.p = this.newPlayer(); this.activeCharacter = "anby"; this.b = this.newBoss(); this.eps = []; this.bullets = []; this.melee = []; this.setState("menu"); }
+  resume() { if (this.state === "paused") { this.last = performance.now(); this.sfx.ensure(); if (!this.knockout) this.sfx.startMusic(); this.setState("playing"); } }
+  toMenu() { this.sfx.stopMusic(); this.p = this.newPlayer(); this.activeCharacter = "anby"; this.characters = { anby: this.newPlayer(), nicole: this.newPlayer() }; this.knockout = null; this.speech = null; this.clearInput(); this.b = this.newBoss(); this.eps = []; this.bullets = []; this.melee = []; this.setState("menu"); }
+  get controlsLocked() { return Boolean(this.knockout) || this.p.dead; }
+  get characterHud() {
+    return {
+      anby: this.activeCharacter === "anby" ? this.p.hp : this.characters.anby.hp,
+      nicole: this.activeCharacter === "nicole" ? this.p.hp : this.characters.nicole.hp,
+      locked: this.controlsLocked,
+      speech: this.speech?.text ?? "",
+    };
+  }
+  private clearInput() {
+    Object.assign(this.input, { left: false, right: false, jump: false, shoot: false, dash: false });
+    this.prev = { jump: false, dash: false };
+  }
   switchCharacter(character: CharacterId): boolean {
-    if (this.state !== "playing" || this.p.dead || this.b.state === "dying" || character === this.activeCharacter) return false;
+    if (this.state !== "playing" || this.controlsLocked || this.b.state === "dying" || this.b.hp <= 0 || character === this.activeCharacter || this.characters[character].hp <= 0) return false;
+    this.activateCharacter(character);
+    this.onState(this.state);
+    return true;
+  }
+  private activateCharacter(character: CharacterId) {
     const { hp, inv, dashCd, shootCd, anim, shootAnim } = this.p;
     this.characters[this.activeCharacter] = { hp, inv, dashCd, shootCd, anim, shootAnim };
     const next = this.characters[character];
@@ -170,7 +192,6 @@ export class Game {
     this.p.dashCd = next.dashCd; this.p.shootCd = next.shootCd;
     this.p.anim = next.anim; this.p.shootAnim = next.shootAnim;
     this.activeCharacter = character;
-    return true;
   }
   private setState(s: GameState, stats?: GameStats) { this.state = s; this.onState(s, stats); }
 
@@ -181,11 +202,19 @@ export class Game {
 
   // ---------------- update ----------------
   private update(dt: number) {
+    if (this.knockout) { this.updateKnockout(dt); return; }
+    if (this.speech) {
+      this.speech.remaining -= dt;
+      if (this.speech.remaining <= 0) { this.speech = null; this.onState(this.state); }
+    }
     if (this.banner) { this.banner.t += dt; if (this.banner.t > this.banner.max) this.banner = null; }
     this.fightTime += dt;
     this.updatePlayer(dt);
+    if (this.knockout) return;
     this.updateBoss(dt);
+    if (this.knockout) return;
     this.updateProjectiles(dt);
+    if (this.knockout) return;
     for (const pt of this.parts) { pt.life -= dt; pt.x += pt.vx * dt; pt.y += pt.vy * dt; if (pt.kind === "dot") pt.vy += 900 * dt; if (pt.kind === "smoke") { pt.vy -= 20 * dt; pt.size += 20 * dt; } }
     this.parts = this.parts.filter((q) => q.life > 0);
     for (const g of this.ghosts) g.life -= dt;
@@ -205,6 +234,7 @@ export class Game {
 
   private finish() {
     const won = this.b.hp <= 0;
+    if (!won && (this.characterHud.anby > 0 || this.characterHud.nicole > 0)) return;
     const h = this.hitsTaken;
     const grade = !won ? "—" : h === 0 ? "A+" : h <= 1 ? "A" : h <= 3 ? "B" : "C";
     this.sfx.stopMusic();
@@ -214,6 +244,7 @@ export class Game {
 
   private updatePlayer(dt: number) {
     const p = this.p, i = this.input;
+    if (this.knockout) return;
     if (p.dead) { p.vy += 2200 * dt; p.y = Math.min(GROUND, p.y + p.vy * dt); return; }
     const jumpPressed = i.jump && !this.prev.jump;
     const dashPressed = i.dash && !this.prev.dash;
@@ -266,15 +297,36 @@ export class Game {
 
   private hurtPlayer(fromDir: number) {
     const p = this.p;
-    if (p.inv > 0 || p.dashT > 0 || p.dead || this.b.state === "dying") return;
+    if (this.knockout || p.inv > 0 || p.dashT > 0 || p.dead || this.b.state === "dying" || this.b.hp <= 0) return;
     p.hp--; this.hitsTaken++; p.inv = 1.4; p.vx = fromDir * 420; p.vy = -420;
     this.shake = 7; this.sfx.hurt();
     this.burst(p.x, p.y - 50, "#c4473a", 14);
     this.parts.push({ x: p.x, y: p.y - 110, vx: 0, vy: -60, life: 0.8, max: 0.8, size: 26, color: "#c4473a", kind: "text", text: "OUCH!" });
     if (p.hp <= 0) {
-      p.dead = true; this.endTimer = 1.6;
-      this.banner = { text: "KNOCKED OUT!", t: 0, max: 2 };
+      p.hp = 0; p.dead = true;
+      this.knockout = { character: this.activeCharacter, elapsed: 0 };
+      this.endTimer = -1; this.speech = null; this.banner = null; this.shake = 0;
+      this.clearInput(); this.sfx.stopMusic();
     }
+    this.onState(this.state);
+  }
+
+  private updateKnockout(dt: number) {
+    const scene = this.knockout;
+    if (!scene) return;
+    this.clearInput();
+    scene.elapsed += dt;
+    if (scene.elapsed < KNOCKOUT_SECONDS) return;
+    this.knockout = null;
+    if (this.b.hp <= 0 || this.b.state === "dying") { this.onState(this.state); return; }
+    const survivor: CharacterId = scene.character === "nicole" ? "anby" : "nicole";
+    if (this.characters[survivor].hp <= 0) { this.finish(); return; }
+    this.activateCharacter(survivor);
+    this.p.dead = false;
+    this.clearInput();
+    if (scene.character === "nicole") this.speech = { character: "anby", text: ANBY_TAG_MESSAGE, remaining: TAG_BUBBLE_SECONDS };
+    this.sfx.startMusic();
+    this.onState(this.state);
   }
 
   private burst(x: number, y: number, color: string, n: number) {
@@ -388,6 +440,7 @@ export class Game {
   }
 
   private updateProjectiles(dt: number) {
+    if (this.knockout) return;
     const b = this.b, p = this.p;
     const bc = { x: b.x, y: b.y + b.hopY - 130 };
     for (const slash of this.melee) {
@@ -427,6 +480,7 @@ export class Game {
       }
       if (e.life <= 0 || e.x < -100 || e.x > WORLD + 100) e.dead = true;
       if (!e.dead && Math.hypot(p.x - e.x, p.y - 45 - e.y) < e.r + 24) { this.hurtPlayer(Math.sign(e.vx) || 1); if (e.kind !== "gear") e.dead = true; }
+      if (this.knockout) return;
     }
     this.eps = this.eps.filter((x) => !x.dead);
     for (const s of this.shadows) s.t += dt;
@@ -478,6 +532,8 @@ export class Game {
     for (const bl of this.bullets) this.drawBullet(bl);
     for (const e of this.eps) this.drawEP(e);
     this.drawParts();
+    if (this.knockout) this.drawKnockout();
+    if (this.speech && this.speech.character === this.activeCharacter) this.drawSpeech();
     c.restore();
     this.drawForeground();
     c.restore();
@@ -575,6 +631,16 @@ export class Game {
   }
 
   private drawCharacter(character: CharacterId, x: number, y: number, face: number, ghost: boolean) {
+    const scene = !ghost && this.knockout?.character === character ? this.knockout : null;
+    if (scene) {
+      const c = this.c;
+      c.save(); c.translate(x, y - 8);
+      c.rotate(face * Math.min(1, scene.elapsed / 0.65) * 1.25);
+      c.globalAlpha *= Math.max(0.2, 1 - Math.max(0, scene.elapsed - 1.5) / 1.3);
+      if (character === "nicole") this.drawNicole(0, 0, face, true);
+      else this.drawAnby(0, 0, face, true);
+      c.restore(); return;
+    }
     if (character === "nicole") this.drawNicole(x, y, face, ghost);
     else this.drawAnby(x, y, face, ghost);
   }
@@ -587,6 +653,38 @@ export class Game {
     c.beginPath(); c.arc(26, 0, 84, -1.0 + progress * 0.6, 1.0 + progress * 0.6);
     c.lineWidth = 12; c.strokeStyle = "#c9d84a"; c.stroke();
     c.lineWidth = 4; c.strokeStyle = "#f4efe4"; c.stroke();
+    c.restore();
+  }
+
+  private drawKnockout() {
+    const c = this.c, scene = this.knockout;
+    if (!scene) return;
+    const x = this.p.x, y = this.p.y - 110;
+    c.save(); c.textAlign = "center"; c.textBaseline = "middle";
+    c.font = "bold 22px 'Special Elite', monospace";
+    c.lineWidth = 5; c.strokeStyle = INK;
+    const label = `${scene.character === "nicole" ? "NICOLE" : "ANBY"} — KO!`;
+    c.strokeText(label, x, y - 38); c.fillStyle = "#fbf6ea"; c.fillText(label, x, y - 38);
+    c.font = "25px serif"; c.fillStyle = "#f2c94c";
+    for (let k = 0; k < 3; k++) {
+      const angle = scene.elapsed * 4 + k * Math.PI * 2 / 3;
+      c.fillText("★", x + Math.cos(angle) * 35, y + Math.sin(angle) * 10);
+    }
+    c.restore();
+  }
+
+  private drawSpeech() {
+    const c = this.c, speech = this.speech;
+    if (!speech) return;
+    const width = 272, height = 62;
+    const x = clamp(this.p.x, this.camX + width / 2 + 10, this.camX + W - width / 2 - 10);
+    const y = Math.max(165, this.p.y - 200);
+    c.save();
+    rrect(c, x - width / 2, y, width, height, 8); ink(c, "#fbf6ea", 3);
+    c.beginPath(); c.moveTo(x - 10, y + height - 1); c.lineTo(this.p.x, this.p.y - 118); c.lineTo(x + 12, y + height - 1); c.fillStyle = "#fbf6ea"; c.fill();
+    c.beginPath(); c.moveTo(x - 10, y + height); c.lineTo(this.p.x, this.p.y - 118); c.lineTo(x + 12, y + height); c.lineWidth = 3; c.strokeStyle = INK; c.stroke();
+    c.font = "bold 19px 'Special Elite', monospace"; c.fillStyle = INK; c.textAlign = "center"; c.textBaseline = "middle";
+    c.fillText("I told you to", x, y + 21); c.fillText("be careful", x, y + 44);
     c.restore();
   }
 
