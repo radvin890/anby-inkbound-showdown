@@ -1,4 +1,5 @@
 import type { Sfx } from "./audio";
+import { CHARACTER_ATTACKS, swordHitsBoss, type CharacterId } from "./characters";
 
 export const W = 960;
 export const H = 540;
@@ -14,6 +15,8 @@ export interface GameStats { time: number; hitsTaken: number; bossPct: number; g
 type EKind = "puff" | "lid" | "gear" | "cube" | "note";
 interface EProj { x: number; y: number; vx: number; vy: number; r: number; kind: EKind; g: number; life: number; bounces: number; rot: number; dead?: boolean }
 interface Bullet { x: number; y: number; vx: number; life: number; dead?: boolean }
+interface Melee { x: number; y: number; face: number; life: number; hit: boolean }
+type CharacterState = { hp: number; inv: number; dashCd: number; shootCd: number; anim: number; shootAnim: number };
 interface Part { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; color: string; kind: "dot" | "ring" | "star" | "text" | "smoke"; text?: string }
 type Attack = "steam" | "lid" | "gears" | "sugar" | "laser" | "notes";
 
@@ -51,20 +54,25 @@ export class Game {
   private shake = 0;
   private grain: HTMLCanvasElement;
   private vignette: HTMLCanvasElement;
-  private scenery = { clouds: [] as number[][], hills: [] as number[][], bldg: [] as number[][], props: [] as number[][], tufts: [] as number[][] };
+  private scenery = { clouds: [] as [number, number, number][], hills: [] as [number, number, number][], bldg: [] as [number, number, number, number][], props: [] as [number, number][], tufts: [] as [number, number][] };
   private p = this.newPlayer();
+  activeCharacter: CharacterId = "anby";
+  private characters: Record<CharacterId, CharacterState> = { anby: this.newPlayer(), nicole: this.newPlayer() };
+  private melee: Melee[] = [];
   private b = this.newBoss();
   private bullets: Bullet[] = [];
   private eps: EProj[] = [];
   private parts: Part[] = [];
-  private ghosts: { x: number; y: number; face: number; life: number }[] = [];
+  private ghosts: { x: number; y: number; face: number; life: number; character: CharacterId }[] = [];
   private shadows: { x: number; t: number }[] = [];
   private banner: { text: string; t: number; max: number; sub?: string } | null = null;
   private endTimer = -1;
   private ro: ResizeObserver;
 
   constructor(private canvas: HTMLCanvasElement, private input: InputState, private sfx: Sfx, private onState: (s: GameState, stats?: GameStats) => void) {
-    this.c = canvas.getContext("2d")!;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("This game requires a 2D canvas.");
+    this.c = context;
     this.grain = this.makeGrain();
     this.vignette = this.makeVignette();
     this.makeScenery();
@@ -91,7 +99,8 @@ export class Game {
   private makeGrain() {
     const g = document.createElement("canvas");
     g.width = g.height = 200;
-    const gc = g.getContext("2d")!;
+    const gc = g.getContext("2d");
+    if (!gc) return g;
     const img = gc.createImageData(200, 200);
     for (let i = 0; i < img.data.length; i += 4) {
       const v = 120 + Math.random() * 135;
@@ -103,7 +112,8 @@ export class Game {
   private makeVignette() {
     const v = document.createElement("canvas");
     v.width = W; v.height = H;
-    const vc = v.getContext("2d")!;
+    const vc = v.getContext("2d");
+    if (!vc) return v;
     const gr = vc.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, W * 0.65);
     gr.addColorStop(0, "rgba(60,35,15,0)");
     gr.addColorStop(1, "rgba(60,35,15,0.55)");
@@ -136,6 +146,10 @@ export class Game {
 
   start() {
     this.p = this.newPlayer();
+    this.activeCharacter = "anby";
+    this.characters = { anby: this.newPlayer(), nicole: this.newPlayer() };
+    this.melee = [];
+    this.prev = { jump: false, dash: false };
     this.b = this.newBoss();
     this.bullets = []; this.eps = []; this.parts = []; this.ghosts = []; this.shadows = [];
     this.fightTime = 0; this.hitsTaken = 0; this.endTimer = -1; this.camX = 0;
@@ -145,7 +159,15 @@ export class Game {
   }
   pause() { if (this.state === "playing") { this.setState("paused"); this.sfx.stopMusic(); } }
   resume() { if (this.state === "paused") { this.last = performance.now(); this.sfx.ensure(); this.sfx.startMusic(); this.setState("playing"); } }
-  toMenu() { this.sfx.stopMusic(); this.p = this.newPlayer(); this.b = this.newBoss(); this.eps = []; this.bullets = []; this.setState("menu"); }
+  toMenu() { this.sfx.stopMusic(); this.p = this.newPlayer(); this.activeCharacter = "anby"; this.b = this.newBoss(); this.eps = []; this.bullets = []; this.melee = []; this.setState("menu"); }
+  switchCharacter(character: CharacterId): boolean {
+    if (this.state !== "playing" || this.p.dead || this.b.state === "dying" || character === this.activeCharacter) return false;
+    const { hp, inv, dashCd, shootCd, anim, shootAnim } = this.p;
+    this.characters[this.activeCharacter] = { hp, inv, dashCd, shootCd, anim, shootAnim };
+    Object.assign(this.p, this.characters[character]);
+    this.activeCharacter = character;
+    return true;
+  }
   private setState(s: GameState, stats?: GameStats) { this.state = s; this.onState(s, stats); }
 
   private attract(dt: number) {
@@ -203,7 +225,7 @@ export class Game {
     }
     if (p.dashT > 0) {
       p.dashT -= dt; p.vx = p.face * 820; p.vy = 0;
-      if (Math.random() < 0.6) this.ghosts.push({ x: p.x, y: p.y, face: p.face, life: 0.22 });
+      if (Math.random() < 0.6) this.ghosts.push({ x: p.x, y: p.y, face: p.face, life: 0.22, character: this.activeCharacter });
     } else {
       const tgt = dir * 340;
       const acc = p.onGround ? 4200 : 2800;
@@ -223,9 +245,15 @@ export class Game {
     else { p.onGround = false; p.coyote -= dt; }
     p.anim += dt * (Math.abs(p.vx) > 20 && p.onGround ? 14 : 3);
     if (i.shoot && p.shootCd <= 0) {
-      p.shootCd = 0.13; p.shootAnim = 0.1;
-      this.bullets.push({ x: p.x + p.face * 44, y: p.y - 58 + rnd(-3, 3), vx: p.face * 980, life: 0.75 });
-      this.sfx.shoot();
+      const attack = CHARACTER_ATTACKS[this.activeCharacter];
+      p.shootCd = attack.cooldown; p.shootAnim = attack.duration;
+      if (this.activeCharacter === "anby") {
+        this.melee.push({ x: p.x, y: p.y, face: p.face, life: attack.duration, hit: false });
+        this.sfx.slash();
+      } else {
+        this.bullets.push({ x: p.x + p.face * 52, y: p.y - 58, vx: p.face * CHARACTER_ATTACKS.nicole.speed, life: CHARACTER_ATTACKS.nicole.lifetime });
+        this.sfx.shoot();
+      }
     }
     // contact with boss
     const b = this.b;
@@ -305,8 +333,8 @@ export class Game {
       if (this.banner == null && b.phase === 1 && this.fightTime < 3) this.banner = { text: "FIGHT!", t: 0, max: 0.9 };
     } else if (b.state === "idle") {
       const lists: Record<number, Attack[]> = { 1: ["steam", "lid", "steam"], 2: ["steam", "gears", "sugar", "lid"], 3: ["laser", "gears", "sugar", "notes", "laser"] };
-      const opts = lists[b.phase].filter((a) => a !== b.lastAttack);
-      const a = opts[Math.floor(Math.random() * opts.length)];
+      const opts = (lists[b.phase] ?? lists[1] ?? ["steam"]).filter((a) => a !== b.lastAttack);
+      const a: Attack = opts[Math.floor(Math.random() * opts.length)] ?? "steam";
       b.attack = a; b.lastAttack = a; b.state = "wind";
       const winds: Record<Attack, number> = { steam: 0.75, lid: 0.7, gears: 0.85, sugar: 0.5, laser: 1.0, notes: 0.65 };
       b.t = winds[a];
@@ -318,9 +346,9 @@ export class Game {
       }
       if (a === "laser") b.laser = { lane: Math.random() < 0.5 ? GROUND - 24 : GROUND - 120, t: 0, fire: false, dir: b.face };
     } else if (b.state === "wind") {
-      this.execute(b.attack!);
+      if (b.attack) this.execute(b.attack);
       b.state = "recover";
-      b.t = [0, 1.25, 1.0, 0.8][b.phase];
+      b.t = [0, 1.25, 1.0, 0.8][b.phase] ?? 0.8;
     }
   }
 
@@ -358,13 +386,23 @@ export class Game {
   private updateProjectiles(dt: number) {
     const b = this.b, p = this.p;
     const bc = { x: b.x, y: b.y + b.hopY - 130 };
+    for (const slash of this.melee) {
+      slash.life -= dt;
+      if (!slash.hit && b.state !== "dying" && b.state !== "intro" && b.inv <= 0 && swordHitsBoss(slash.x, slash.y, slash.face, bc.x, bc.y)) {
+        slash.hit = true;
+        b.hp -= CHARACTER_ATTACKS.anby.damage; b.flash = 0.1; this.sfx.hit();
+        this.burst(slash.x + slash.face * 100, slash.y - 70, "#c9d84a", 6);
+        this.checkPhase();
+      }
+    }
+    this.melee = this.melee.filter((slash) => slash.life > 0);
     for (const bl of this.bullets) {
       bl.x += bl.vx * dt; bl.life -= dt;
       if (bl.life <= 0) bl.dead = true;
       if (b.state !== "dying" && Math.hypot(bl.x - bc.x, bl.y - bc.y) < 100) {
         bl.dead = true;
         if (b.inv <= 0 && b.state !== "intro") {
-          b.hp -= 4; b.flash = 0.06; this.sfx.hit();
+          b.hp -= CHARACTER_ATTACKS.nicole.damage; b.flash = 0.06; this.sfx.hit();
           if (Math.random() < 0.5) this.parts.push({ x: bl.x, y: bl.y, vx: rnd(-40, 40), vy: rnd(-200, -80), life: 0.25, max: 0.25, size: 5, color: "#f2c94c", kind: "dot" });
           this.checkPhase();
         } else this.parts.push({ x: bl.x, y: bl.y, vx: 0, vy: 0, life: 0.15, max: 0.15, size: 10, color: "#efe4cc", kind: "ring" });
@@ -428,10 +466,11 @@ export class Game {
     }
     this.drawLaser();
     this.drawBoss();
-    for (const g of this.ghosts) { c.globalAlpha = g.life * 2; this.drawAnby(g.x, g.y, g.face, true); }
+    for (const g of this.ghosts) { c.globalAlpha = g.life * 2; this.drawCharacter(g.character, g.x, g.y, g.face, true); }
     c.globalAlpha = 1;
     const p = this.p;
-    if (!(p.inv > 0 && p.dashT <= 0 && Math.floor(this.time * 20) % 2 === 0 && !p.dead)) this.drawAnby(p.x, p.y, p.face, false);
+    if (!(p.inv > 0 && p.dashT <= 0 && Math.floor(this.time * 20) % 2 === 0 && !p.dead)) this.drawCharacter(this.activeCharacter, p.x, p.y, p.face, false);
+    for (const slash of this.melee) this.drawMelee(slash);
     for (const bl of this.bullets) this.drawBullet(bl);
     for (const e of this.eps) this.drawEP(e);
     this.drawParts();
@@ -560,13 +599,13 @@ export class Game {
     c.beginPath(); c.moveTo(-10, -73); c.lineTo(0, -64); c.lineTo(10, -73); ink(c, "#f4efe4", 2);
     c.fillStyle = "#c9d84a"; c.fillRect(-14, -50, 28, 3); // accent belt
     // front arm + sword
-    const shooting = this.input.shoot && !ghost;
+    const shooting = p.shootAnim > 0 && !ghost;
     if (shooting) {
       hose(c, 6, -64, 30, -60, -4, 6, "#26222a");
-      c.save(); c.translate(32, -60); c.rotate(-0.05 + (p.shootAnim > 0 ? -0.15 : 0));
+      c.save(); c.translate(32, -60); c.rotate(-0.8 + (1 - p.shootAnim / CHARACTER_ATTACKS.anby.duration) * 1.5);
       rrect(c, -4, -4, 8, 8, 2); ink(c, "#3a3440", 2);
-      c.beginPath(); c.moveTo(4, -3); c.lineTo(36, -2); c.lineTo(42, 0); c.lineTo(36, 3); c.lineTo(4, 3); c.closePath(); ink(c, "#dfe6ea", 2);
-      c.beginPath(); c.moveTo(6, 0); c.lineTo(38, 0); c.strokeStyle = "#f2c94c"; c.lineWidth = 1.5; c.stroke();
+      c.beginPath(); c.moveTo(4, -4); c.lineTo(72, -3); c.lineTo(80, 0); c.lineTo(72, 4); c.lineTo(4, 4); c.closePath(); ink(c, "#dfe6ea", 2);
+      c.beginPath(); c.moveTo(6, 0); c.lineTo(76, 0); c.strokeStyle = "#c9d84a"; c.lineWidth = 2; c.stroke();
       c.restore();
     } else {
       hose(c, 8, -62, 18, -42 - sw * 4, 6, 6, "#26222a");
@@ -600,7 +639,7 @@ export class Game {
     const c = this.c, d = Math.sign(bl.vx);
     c.save(); c.translate(bl.x, bl.y); c.scale(d, 1);
     c.beginPath(); c.moveTo(-24, -6); c.quadraticCurveTo(4, -10, 12, 0); c.quadraticCurveTo(4, 10, -24, 6); c.quadraticCurveTo(-6, 0, -24, -6);
-    ink(c, "#f2d24c", 2);
+    ink(c, "#ed78a7", 2);
     c.beginPath(); c.moveTo(-14, -2); c.lineTo(-6, 2); c.lineTo(0, -2); c.lineTo(6, 1); c.strokeStyle = "#fffbe8"; c.lineWidth = 1.5; c.stroke();
     c.restore();
   }
@@ -740,7 +779,7 @@ export class Game {
         for (let k = 0; k < 16; k++) { const ang = k / 16 * Math.PI * 2, rr = k % 2 ? r : r * 0.45; c.lineTo(q.x + Math.cos(ang) * rr, q.y + Math.sin(ang) * rr); }
         c.closePath(); ink(c, "#f2d24c", 2.5);
       } else if (q.kind === "text") {
-        c.font = `${q.size}px Rye, serif`; c.textAlign = "center"; c.lineWidth = 5; c.strokeStyle = INK; c.strokeText(q.text!, q.x, q.y); c.fillStyle = q.color; c.fillText(q.text!, q.x, q.y);
+        c.font = `${q.size}px Rye, serif`; c.textAlign = "center"; c.lineWidth = 5; c.strokeStyle = INK; c.strokeText(q.text ?? "", q.x, q.y); c.fillStyle = q.color; c.fillText(q.text ?? "", q.x, q.y);
       }
     }
     c.globalAlpha = 1;
@@ -750,7 +789,8 @@ export class Game {
     const c = this.c, p = this.p, b = this.b;
     // player cards
     c.font = "18px Rye, serif"; c.textAlign = "left"; c.textBaseline = "alphabetic";
-    c.lineWidth = 4; c.strokeStyle = INK; c.strokeText("ANBY", 20, 34); c.fillStyle = "#fbf6ea"; c.fillText("ANBY", 20, 34);
+    const label = this.activeCharacter === "anby" ? "ANBY · SWORD" : "NICOLE · ETHER";
+    c.lineWidth = 4; c.strokeStyle = INK; c.strokeText(label, 20, 34); c.fillStyle = "#fbf6ea"; c.fillText(label, 20, 34);
     for (let k = 0; k < 5; k++) {
       rrect(c, 20 + k * 30, 44, 24, 30, 5); ink(c, k < p.hp ? "#c4473a" : "#e9dcc0", 3);
       if (k < p.hp) { c.fillStyle = "#fbf6ea"; c.font = "14px Rye, serif"; c.textAlign = "center"; c.fillText("♥", 32 + k * 30, 64); c.textAlign = "left"; }
@@ -772,7 +812,8 @@ export class Game {
   }
 
   private drawBanner() {
-    const c = this.c, bn = this.banner!;
+    const c = this.c, bn = this.banner;
+    if (!bn) return;
     const k = bn.t / bn.max;
     const s = k < 0.15 ? k / 0.15 * 1.15 : k < 0.25 ? 1.15 - (k - 0.15) : 1;
     c.save(); c.globalAlpha = k > 0.85 ? (1 - k) / 0.15 : 1;
