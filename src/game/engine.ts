@@ -164,7 +164,11 @@ export class Game {
     if (this.state !== "playing" || this.p.dead || this.b.state === "dying" || character === this.activeCharacter) return false;
     const { hp, inv, dashCd, shootCd, anim, shootAnim } = this.p;
     this.characters[this.activeCharacter] = { hp, inv, dashCd, shootCd, anim, shootAnim };
-    Object.assign(this.p, this.characters[character]);
+    const next = this.characters[character];
+    // Copy only local fields: initial character records may also contain spawn physics.
+    this.p.hp = next.hp; this.p.inv = next.inv;
+    this.p.dashCd = next.dashCd; this.p.shootCd = next.shootCd;
+    this.p.anim = next.anim; this.p.shootAnim = next.shootAnim;
     this.activeCharacter = character;
     return true;
   }

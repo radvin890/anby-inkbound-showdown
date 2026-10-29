@@ -177,7 +177,7 @@ export function InkboundGame() {
           </div>
           <div className="flex items-end gap-2">
             <TouchBtn k="dash" input={inputRef}>DASH</TouchBtn>
-            <TouchBtn k="shoot" input={inputRef}>FIRE</TouchBtn>
+            <TouchBtn k="shoot" input={inputRef}>{activeCharacter === "anby" ? "SLASH" : "FIRE"}</TouchBtn>
             <TouchBtn k="jump" input={inputRef} big>JUMP</TouchBtn>
           </div>
         </div>
