@@ -570,6 +570,69 @@ export class Game {
     }
   }
 
+  private drawCharacter(character: CharacterId, x: number, y: number, face: number, ghost: boolean) {
+    if (character === "nicole") this.drawNicole(x, y, face, ghost);
+    else this.drawAnby(x, y, face, ghost);
+  }
+
+  private drawMelee(slash: Melee) {
+    const c = this.c;
+    const progress = 1 - slash.life / CHARACTER_ATTACKS.anby.duration;
+    c.save(); c.translate(slash.x, slash.y - 60); c.scale(slash.face, 1);
+    c.globalAlpha = Math.max(0, 1 - progress);
+    c.beginPath(); c.arc(26, 0, 84, -1.0 + progress * 0.6, 1.0 + progress * 0.6);
+    c.lineWidth = 12; c.strokeStyle = "#c9d84a"; c.stroke();
+    c.lineWidth = 4; c.strokeStyle = "#f4efe4"; c.stroke();
+    c.restore();
+  }
+
+  private drawNicole(x: number, y: number, face: number, ghost: boolean) {
+    const c = this.c, p = this.p;
+    const moving = !ghost && Math.abs(p.vx) > 20 && p.onGround;
+    const swing = moving ? Math.sin(p.anim) * 12 : 0;
+    const firing = !ghost && p.shootAnim > 0;
+    c.save(); c.translate(x, y); c.scale(face, 1);
+    if (ghost) c.globalAlpha *= 0.6;
+    else { ell(c, 0, 2, 28, 6); c.fillStyle = "rgba(29,22,18,0.3)"; c.fill(); }
+    c.rotate(p.dashT > 0 && !ghost ? 0.22 : 0);
+    // Long pink twin tails give Nicole a completely distinct silhouette.
+    for (const side of [-1, 1]) {
+      c.save(); c.translate(side * 17, -97); c.rotate(side * (0.16 + Math.sin(p.anim) * 0.08));
+      c.beginPath(); c.moveTo(-7, 0); c.quadraticCurveTo(-24, 26, -15, 61); c.quadraticCurveTo(8, 68, 9, 44); c.quadraticCurveTo(-2, 35, 8, 4); c.closePath(); ink(c, "#ed91b2", 2.5);
+      c.restore();
+    }
+    hose(c, -7, -35, -10 - swing, -6, -7, 7, "#393039");
+    hose(c, 7, -35, 10 + swing, -6, 7, 7, "#393039");
+    ell(c, -7 - swing, -3, 10, 5); ink(c, "#353038", 2.5);
+    ell(c, 14 + swing, -3, 10, 5); ink(c, "#353038", 2.5);
+    c.translate(0, moving ? -Math.abs(Math.cos(p.anim)) * 3 : 0);
+    hose(c, -10, -64, -22, -43, -5, 6, "#f3dcc4");
+    rrect(c, -16, -49, 32, 16, 4); ink(c, "#353038", 2.5);
+    rrect(c, -15, -73, 30, 26, 6); ink(c, "#f4efe4", 2.5);
+    c.beginPath(); c.moveTo(-15, -73); c.lineTo(-5, -59); c.lineTo(-8, -47); c.lineTo(-17, -49); c.closePath(); ink(c, "#38323d", 2);
+    c.beginPath(); c.moveTo(15, -73); c.lineTo(5, -59); c.lineTo(8, -47); c.lineTo(17, -49); c.closePath(); ink(c, "#38323d", 2);
+    c.fillStyle = "#ed78a7"; c.fillRect(-16, -48, 32, 4);
+    ell(c, 0, -49, 4, 3); ink(c, "#e8b04a", 1.5);
+    // Briefcase doubles as an ether cannon; recoil and muzzle glow are visible.
+    const handX = firing ? 28 - p.shootAnim * 20 : 24;
+    const handY = firing ? -61 : -41;
+    hose(c, 9, -64, handX, handY, 5, 6, "#f3dcc4");
+    c.save(); c.translate(handX, handY);
+    rrect(c, -3, -10, 17, 10, 3); ink(c, "#353038", 2);
+    rrect(c, -8, -3, 38, 25, 4); ink(c, "#45404c", 3);
+    c.fillStyle = "#e8b04a"; c.fillRect(-7, 7, 36, 3);
+    ell(c, 29, 7, 5, 8); ink(c, "#ed78a7", 2);
+    ell(c, 8, 9, 5, 5); ink(c, "#ed91b2", 1.5);
+    if (firing) { ell(c, 40, 7, 10 + p.shootAnim * 30, 8); ink(c, "#f5c9dd", 2); }
+    c.restore();
+    ell(c, 2, -89, 18, 18); ink(c, "#f3dcc4", 2.5);
+    c.beginPath(); c.moveTo(-19, -84); c.quadraticCurveTo(-26, -112, 2, -112); c.quadraticCurveTo(25, -110, 22, -91); c.lineTo(14, -100); c.lineTo(6, -89); c.lineTo(2, -98); c.lineTo(-5, -84); c.closePath(); ink(c, "#ed91b2", 2.5);
+    for (const ex of [7, 15]) { ell(c, ex, -88, 3, 5); ink(c, "#70aa8d", 1); ell(c, ex + 1, -89, 1, 3); c.fillStyle = INK; c.fill(); }
+    c.beginPath(); c.arc(13, -81, 5, 0.1, Math.PI * 0.8); ink(c, null, 1.5);
+    c.beginPath(); c.moveTo(-14, -102); c.lineTo(-5, -105); c.lineWidth = 3; c.strokeStyle = "#e8b04a"; c.stroke();
+    c.restore();
+  }
+
   private drawAnby(x: number, y: number, face: number, ghost: boolean) {
     const c = this.c, p = this.p;
     const moving = ghost ? false : Math.abs(p.vx) > 20 && p.onGround;

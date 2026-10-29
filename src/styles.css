@@ -194,6 +194,11 @@
     font-size: 0.95rem; cursor: pointer;
   }
   .ink-legend { margin-top: 0.75rem; display: grid; gap: 0.4rem; text-align: left; }
+  .character-switch { position: absolute; top: 19%; left: 2%; display: flex; gap: 0.3rem; }
+  .character-key { height: 1.9rem; padding: 0.15rem 0.4rem; border: 2px solid var(--ink); border-radius: 4px; background: var(--paper); color: var(--ink); font-family: var(--font-body); font-size: 0.75rem; box-shadow: 2px 2px 0 var(--ink); }
+  .character-key[aria-pressed="true"] { background: var(--accent); color: var(--accent-foreground); }
+  .character-key:hover { background: var(--muted); }
+  .character-key kbd { font-weight: bold; }
   .ink-legend li { display: flex; gap: 0.75rem; align-items: center; }
   .ink-legend kbd {
     min-width: 8.5rem; text-align: center;
@@ -227,4 +232,12 @@
 @keyframes ink-in {
   from { opacity: 0; transform: scale(0.97); }
   to { opacity: 1; transform: scale(1); }
+}
+
+@media (max-width: 600px) {
+  .character-switch { top: 20%; }
+  .character-key { height: 1.65rem; font-size: 0.65rem; padding: 0.1rem 0.25rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ink-overlay { animation: none; }
 }
