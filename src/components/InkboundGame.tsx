@@ -61,7 +61,9 @@ export function InkboundGame() {
     gameRef.current?.start();
   };
   const switchTo = (character: CharacterId) => {
-    if (gameRef.current?.switchCharacter(character)) setActiveCharacter(character);
+    // During a Quick Assist window the teammate key triggers an assist instead of a switch.
+    const g = gameRef.current;
+    if (g?.switchCharacter(character)) setActiveCharacter(g.activeCharacter);
   };
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { Game, BOSS_MAX } from "./engine";
-import { CHARACTER_ATTACKS, characterForKey, swordHitsBoss } from "./characters";
+import { ASSIST_DAMAGE, CHARACTER_ATTACKS, characterForKey, swordHitsBoss } from "./characters";
 
 // Exercise the actual engine without allocating a canvas or an animation loop.
 function fixture() {
@@ -82,5 +82,53 @@ describe("Character combat", () => {
     expect(internal.melee).toHaveLength(0);
     expect(internal.bullets).toEqual([{ x: 852, y: 398, vx: 980, life: 0.75 }]);
     expect(internal.sfx.shoot).toHaveBeenCalledOnce();
+  });
+});
+describe("Quick Assist", () => {
+  type Eng = { hurtPlayer(d: number): void; update(dt: number): void; assistWindow: unknown; assist: unknown; checkPhase(): void; banner: unknown };
+  function hurtFixture() {
+    const f = fixture(); const eng = f.game as unknown as Eng;
+    Object.assign(f.internal.sfx, { hurt: vi.fn(), dash: vi.fn() });
+    Object.assign(f.game, { assistWindow: null, assist: null, knockout: null, speech: null, hitsTaken: 0, shake: 0, ghosts: [], endTimer: -1, banner: null });
+    f.p.inv = 0; f.p.dashT = 0; f.internal.input.shoot = false;
+    eng.checkPhase = vi.fn();
+    eng.hurtPlayer(1);
+    return { ...f, eng };
+  }
+  it("opens a 0.5s window for the teammate when hurt", () => {
+    const { eng } = hurtFixture();
+    expect(eng.assistWindow).toEqual({ teammate: "nicole", remaining: 0.5 });
+  });
+  it("teammate key triggers one assist, damages the boss, and does not switch", () => {
+    const { game, eng, b } = hurtFixture();
+    expect(game.switchCharacter("nicole")).toBe(true);
+    expect(game.activeCharacter).toBe("anby");
+    expect(eng.assistWindow).toBeNull();
+    expect(game.tryAssist("nicole")).toBe(false);
+    for (let i = 0; i < 30; i++) (game as unknown as { updateAssist(dt: number): void }).updateAssist(0.05);
+    expect(b.hp).toBe(BOSS_MAX - ASSIST_DAMAGE.nicole);
+    expect(eng.assist).toBeNull();
+  });
+  it("expired window is not assistable and the key switches normally", () => {
+    const { game, eng } = hurtFixture();
+    (eng.assistWindow as { remaining: number }).remaining = 0;
+    expect(game.tryAssist("nicole")).toBe(false);
+  });
+  it("no assist while paused or when boss is dying", () => {
+    const a = hurtFixture(); Object.assign(a.game, { state: "paused" });
+    expect(a.game.tryAssist("nicole")).toBe(false);
+    const d = hurtFixture(); d.b.state = "dying";
+    expect(d.game.tryAssist("nicole")).toBe(false);
+  });
+  it("works symmetrically for Nicole hurt -> Anby assist", () => {
+    const f = fixture(); f.game.switchCharacter("nicole");
+    const eng = f.game as unknown as Eng;
+    Object.assign(f.internal.sfx, { hurt: vi.fn(), dash: vi.fn() });
+    Object.assign(f.game, { assistWindow: null, assist: null, knockout: null, hitsTaken: 0, banner: null });
+    f.p.inv = 0; f.p.dashT = 0;
+    eng.hurtPlayer(1);
+    expect(eng.assistWindow).toEqual({ teammate: "anby", remaining: 0.5 });
+    expect(f.game.tryAssist("anby")).toBe(true);
+    expect(f.game.activeCharacter).toBe("nicole");
   });
 });
