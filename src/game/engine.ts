@@ -746,36 +746,74 @@ export class Game {
     const air = !p.onGround && !ghost;
     const dashing = p.dashT > 0 && !ghost;
     c.rotate(dashing ? 0.25 : 0);
-    // legs
+    // Street Streak legs: exposed upper thighs, dark high socks and accent cuffs.
     const legC = "#2a2526";
     if (air) { hose(c, -6, -36, -14, -12, -10, 7, legC); hose(c, 6, -36, 14, -16, 8, 7, legC); }
     else { hose(c, -6, -36, -8 - sw * 14, -4, -6, 7, legC); hose(c, 6, -36, 8 + sw * 14, -4, 6, 7, legC); }
     const f1x = air ? -14 : -8 - sw * 14, f2x = air ? 14 : 8 + sw * 14, fy = air ? -12 : -2;
+    for (const side of [-1, 1]) {
+      hose(c, side * 6, -36, side * 8, -29, side * 2, 7, "#f3dcc4");
+      hose(c, side * 8, -28, side * 9, -25, 0, 8, side < 0 ? "#ed8c39" : "#c9e94a");
+    }
     ell(c, f1x + 3, fy, 9, 5); ink(c, "#1f1b1c", 2.5);
     ell(c, f2x + 3, fy - (air ? 4 : 0), 9, 5); ink(c, "#1f1b1c", 2.5);
+    for (const [fx, footY] of [[f1x, fy], [f2x, fy - (air ? 4 : 0)]] as const) {
+      c.beginPath(); c.moveTo(fx - 4, footY + 3); c.lineTo(fx + 10, footY + 3); c.strokeStyle = "#aeb5b8"; c.lineWidth = 2; c.stroke();
+      c.beginPath(); c.moveTo(fx, footY - 2); c.lineTo(fx + 4, footY); c.strokeStyle = "#c9e94a"; c.lineWidth = 2; c.stroke();
+    }
     c.translate(0, -bob);
+    // Backpack is a broad vertical machine on the BACK, not the hip sheath.
+    c.save(); c.translate(-19, -64); c.rotate(-0.12);
+    c.beginPath(); c.moveTo(-13, -16); c.lineTo(6, -18); c.lineTo(13, -9); c.lineTo(12, 18); c.lineTo(-8, 22); c.lineTo(-15, 12); c.closePath(); ink(c, "#929b9e", 2.5);
+    c.beginPath(); c.moveTo(-12, -12); c.lineTo(-3, -14); c.lineTo(-1, 16); c.lineTo(-9, 18); c.closePath(); ink(c, "#c9e94a", 1.5);
+    rrect(c, 1, -10, 8, 20, 2); ink(c, "#42484c", 1.5);
+    for (let vent = 0; vent < 3; vent++) { c.beginPath(); c.moveTo(3, -6 + vent * 5); c.lineTo(7, -6 + vent * 5); c.strokeStyle = "#c9e94a"; c.lineWidth = 2; c.stroke(); }
+    ell(c, -5, -7, 3, 3); ink(c, "#e2e6e6", 1.5);
+    c.restore();
     // back arm
     hose(c, -8, -62, -18, -42 + sw * 4, -6, 6, "#26222a");
-    // skirt / shorts
-    c.beginPath(); c.moveTo(-13, -46); c.lineTo(13, -46); c.lineTo(17, -32); c.lineTo(-17, -32); c.closePath(); ink(c, "#24212a", 2.5);
-    // jacket
+    // Two separate shorts legs, rather than the former skirt-shaped hem.
+    c.beginPath(); c.moveTo(-13, -46); c.lineTo(13, -46); c.lineTo(16, -32); c.lineTo(3, -32); c.lineTo(0, -37); c.lineTo(-3, -32); c.lineTo(-16, -32); c.closePath(); ink(c, "#24212a", 2.5);
+    // Black/lime streetwear top with asymmetric gray mechanical chest panels.
     rrect(c, -14, -74, 28, 32, 8); ink(c, "#26222a", 2.5);
-    c.fillStyle = "#f4efe4"; c.fillRect(-2, -72, 4, 28);
-    c.beginPath(); c.moveTo(-10, -73); c.lineTo(0, -64); c.lineTo(10, -73); ink(c, "#f4efe4", 2);
-    c.fillStyle = "#c9d84a"; c.fillRect(-14, -50, 28, 3); // accent belt
-    // front arm + sword
+    c.beginPath(); c.moveTo(-13, -71); c.lineTo(-6, -73); c.lineTo(-1, -61); c.lineTo(-7, -48); c.lineTo(-14, -50); c.closePath(); ink(c, "#c9e94a", 1.5);
+    c.beginPath(); c.moveTo(1, -72); c.lineTo(11, -70); c.lineTo(13, -60); c.lineTo(4, -58); c.lineTo(-1, -64); c.closePath(); ink(c, "#aeb5b8", 1.5);
+    rrect(c, 3, -55, 9, 7, 1); ink(c, "#747f85", 1.5);
+    c.beginPath(); c.moveTo(-7, -73); c.lineTo(0, -66); c.lineTo(7, -73); ink(c, "#26222a", 2);
+    c.fillStyle = "#c9e94a"; c.fillRect(-14, -46, 28, 3);
+    rrect(c, 2, -47, 5, 5, 1); ink(c, "#aeb5b8", 1);
+    // RIGHT hip/butt sheath: slim empty scabbard, mouth angled up toward
+    // the right hand. It stays below the waist, separate from the backpack.
+    c.save(); c.translate(12, -41); c.rotate(0.65);
+    hose(c, -1, -2, -5, 2, 0, 4, "#42484c");
+    c.beginPath(); c.moveTo(-4, 2); c.lineTo(4, 2); c.lineTo(5, 27); c.lineTo(0, 34); c.lineTo(-5, 27); c.closePath(); ink(c, "#586168", 2);
+    rrect(c, -5, -2, 10, 5, 1); ink(c, "#aeb5b8", 1.5);
+    c.beginPath(); c.moveTo(-2, 7); c.lineTo(-2, 24); c.strokeStyle = "#c9e94a"; c.lineWidth = 2; c.stroke();
+    c.restore();
+    // Right arm and hand retain the existing attack pivot and swing timing.
     const shooting = p.shootAnim > 0 && !ghost;
+    const drawSword = () => {
+      // Grip, mechanical guard and broad gray blade are ONE hand-held weapon.
+      rrect(c, -9, -3, 14, 6, 1); ink(c, "#303638", 1.5);
+      c.beginPath(); c.moveTo(-6, -2); c.lineTo(-6, 2); c.moveTo(-2, -2); c.lineTo(-2, 2); c.strokeStyle = "#c9e94a"; c.lineWidth = 1.5; c.stroke();
+      rrect(c, 2, -8, 7, 16, 2); ink(c, "#899498", 2);
+      c.beginPath(); c.moveTo(9, -7); c.lineTo(24, -9); c.lineTo(64, -7); c.lineTo(80, 0); c.lineTo(66, 7); c.lineTo(20, 8); c.lineTo(9, 5); c.closePath(); ink(c, "#b9c2c6", 2);
+      c.beginPath(); c.moveTo(14, -4); c.lineTo(61, -3); c.lineTo(70, 0); c.lineTo(18, 1); c.closePath(); ink(c, "#59636a", 1);
+      c.beginPath(); c.moveTo(20, -3); c.lineTo(59, -2); c.strokeStyle = "#c9e94a"; c.lineWidth = 3; c.stroke();
+      c.beginPath(); c.moveTo(22, 5); c.lineTo(64, 4); c.lineTo(77, 0); c.strokeStyle = "#e2e6e6"; c.lineWidth = 1.5; c.stroke();
+      ell(c, 15, 2, 2, 2); ink(c, "#ed8c39", 1);
+    };
     if (shooting) {
       hose(c, 6, -64, 30, -60, -4, 6, "#26222a");
       c.save(); c.translate(32, -60); c.rotate(-0.8 + (1 - p.shootAnim / CHARACTER_ATTACKS.anby.duration) * 1.5);
-      rrect(c, -4, -4, 8, 8, 2); ink(c, "#3a3440", 2);
-      c.beginPath(); c.moveTo(4, -4); c.lineTo(72, -3); c.lineTo(80, 0); c.lineTo(72, 4); c.lineTo(4, 4); c.closePath(); ink(c, "#dfe6ea", 2);
-      c.beginPath(); c.moveTo(6, 0); c.lineTo(76, 0); c.strokeStyle = "#c9d84a"; c.lineWidth = 2; c.stroke();
+      drawSword();
+      ell(c, -2, 0, 5, 4); ink(c, "#303638", 1.5);
       c.restore();
     } else {
       hose(c, 8, -62, 18, -42 - sw * 4, 6, 6, "#26222a");
-      c.save(); c.translate(19, -42); c.rotate(1.1);
-      c.beginPath(); c.moveTo(0, -3); c.lineTo(30, -2); c.lineTo(36, 0); c.lineTo(30, 3); c.lineTo(0, 3); c.closePath(); ink(c, "#dfe6ea", 2);
+      c.save(); c.translate(19, -42 - sw * 4); c.rotate(0.42);
+      drawSword();
+      ell(c, -2, 0, 5, 4); ink(c, "#303638", 1.5);
       c.restore();
     }
     // head
@@ -787,9 +825,11 @@ export class Game {
     c.quadraticCurveTo(-8, -82, -6, -74); c.quadraticCurveTo(-14, -72, -18, -78); c.closePath();
     ink(c, "#d8d6d2", 2.5);
     c.beginPath(); c.moveTo(-14, -92); c.quadraticCurveTo(-10, -100, -2, -103); c.strokeStyle = "#f7f6f2"; c.lineWidth = 2; c.stroke();
-    // headband
+    // Black headphones, with a clearly visible gold ring/crescent ear cup.
     c.beginPath(); c.moveTo(-16, -100); c.quadraticCurveTo(2, -112, 20, -100); c.lineWidth = 6; c.strokeStyle = INK; c.stroke(); c.lineWidth = 4; c.strokeStyle = "#2f2c38"; c.stroke();
-    hose(c, -17, -100, -30, -96 + Math.sin(this.time * 8) * 3, -2, 3, "#2f2c38");
+    ell(c, -13, -92, 8, 11); ink(c, "#24272b", 2);
+    ell(c, -13, -92, 5, 7); c.strokeStyle = "#d4b458"; c.lineWidth = 2; c.stroke();
+    c.beginPath(); c.arc(-12, -92, 3.5, 0.6, 5.4); c.strokeStyle = "#d4b458"; c.lineWidth = 1.5; c.stroke();
     // pie-cut eyes
     for (const ex of [7, 15]) {
       ell(c, ex, -88, 3, 5.5); c.fillStyle = INK; c.fill();
