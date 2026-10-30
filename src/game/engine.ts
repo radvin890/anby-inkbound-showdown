@@ -1,5 +1,5 @@
 import type { Sfx } from "./audio";
-import { ANBY_TAG_MESSAGE, KNOCKOUT_SECONDS, TAG_BUBBLE_SECONDS, CHARACTER_ATTACKS, swordHitsBoss, type CharacterId } from "./characters";
+import { ASSIST_WINDOW_SECONDS, ASSIST_HURT_TIMESCALE, ASSIST_DURATION, ASSIST_STRIKE_AT, ASSIST_DAMAGE, teammateOf, ANBY_TAG_MESSAGE, KNOCKOUT_SECONDS, TAG_BUBBLE_SECONDS, CHARACTER_ATTACKS, swordHitsBoss, type CharacterId } from "./characters";
 
 export const W = 960;
 export const H = 540;
@@ -69,6 +69,10 @@ export class Game {
   private endTimer = -1;
   private knockout: { character: CharacterId; elapsed: number } | null = null;
   private speech: { character: CharacterId; text: string; remaining: number } | null = null;
+  /** Open Quick Assist opportunity from a single damage event; null once used or expired. */
+  private assistWindow: { teammate: CharacterId; remaining: number } | null = null;
+  /** Teammate performing an assist attack (visual actor, not the controlled player). */
+  private assist: { character: CharacterId; t: number; face: number; fromX: number; toX: number; y: number; hit: boolean } | null = null;
   private ro: ResizeObserver;
 
   constructor(private canvas: HTMLCanvasElement, private input: InputState, private sfx: Sfx, private onState: (s: GameState, stats?: GameStats) => void) {
@@ -151,7 +155,7 @@ export class Game {
     this.activeCharacter = "anby";
     this.characters = { anby: this.newPlayer(), nicole: this.newPlayer() };
     this.melee = [];
-    this.knockout = null; this.speech = null;
+    this.knockout = null; this.speech = null; this.assistWindow = null; this.assist = null;
     this.clearInput();
     this.prev = { jump: false, dash: false };
     this.b = this.newBoss();
@@ -163,7 +167,7 @@ export class Game {
   }
   pause() { if (this.state === "playing") { this.setState("paused"); this.sfx.stopMusic(); } }
   resume() { if (this.state === "paused") { this.last = performance.now(); this.sfx.ensure(); if (!this.knockout) this.sfx.startMusic(); this.setState("playing"); } }
-  toMenu() { this.sfx.stopMusic(); this.p = this.newPlayer(); this.activeCharacter = "anby"; this.characters = { anby: this.newPlayer(), nicole: this.newPlayer() }; this.knockout = null; this.speech = null; this.clearInput(); this.b = this.newBoss(); this.eps = []; this.bullets = []; this.melee = []; this.setState("menu"); }
+  toMenu() { this.sfx.stopMusic(); this.p = this.newPlayer(); this.activeCharacter = "anby"; this.characters = { anby: this.newPlayer(), nicole: this.newPlayer() }; this.knockout = null; this.speech = null; this.assistWindow = null; this.assist = null; this.clearInput(); this.b = this.newBoss(); this.eps = []; this.bullets = []; this.melee = []; this.setState("menu"); }
   get controlsLocked() { return Boolean(this.knockout) || this.p.dead; }
   get characterHud() {
     return {
@@ -177,7 +181,24 @@ export class Game {
     Object.assign(this.input, { left: false, right: false, jump: false, shoot: false, dash: false });
     this.prev = { jump: false, dash: false };
   }
+  get assistOpen() { return this.assistWindow; }
+  /** Returns true if the press was consumed as a Quick Assist (no character switch). */
+  tryAssist(character: CharacterId): boolean {
+    const w = this.assistWindow;
+    if (!w || w.remaining <= 0 || this.state !== "playing" || this.controlsLocked || this.assist || this.b.state === "dying" || this.b.hp <= 0) return false;
+    if (character !== w.teammate || this.characters[character].hp <= 0) return false;
+    this.assistWindow = null; // consume: this damage event can never be assisted again
+    const face = Math.sign(this.b.x - this.p.x) || 1;
+    const fromX = face > 0 ? this.camX - 90 : this.camX + W + 90;
+    const toX = character === "anby" ? this.b.x - face * 190 : this.b.x - face * 430;
+    this.assist = { character, t: 0, face, fromX, toX: clamp(toX, this.camX + 40, this.camX + W - 40), y: GROUND, hit: false };
+    this.sfx.dash();
+    this.banner = { text: character === "anby" ? "ANBY ASSIST!" : "NICOLE ASSIST!", t: 0, max: 0.9 };
+    this.onState(this.state);
+    return true;
+  }
   switchCharacter(character: CharacterId): boolean {
+    if (this.tryAssist(character)) return true;
     if (this.state !== "playing" || this.controlsLocked || this.b.state === "dying" || this.b.hp <= 0 || character === this.activeCharacter || this.characters[character].hp <= 0) return false;
     this.activateCharacter(character);
     this.onState(this.state);
@@ -209,7 +230,13 @@ export class Game {
     }
     if (this.banner) { this.banner.t += dt; if (this.banner.t > this.banner.max) this.banner = null; }
     this.fightTime += dt;
-    this.updatePlayer(dt);
+    if (this.assistWindow) {
+      this.assistWindow.remaining -= dt;
+      if (this.assistWindow.remaining <= 0 || this.b.state === "dying" || this.b.hp <= 0) { this.assistWindow = null; this.onState(this.state); }
+    }
+    this.updateAssist(dt);
+    // Localized slow-motion: only the injured character's simulation is scaled.
+    this.updatePlayer(this.assistWindow ? dt * ASSIST_HURT_TIMESCALE : dt);
     if (this.knockout) return;
     this.updateBoss(dt);
     if (this.knockout) return;
@@ -302,10 +329,12 @@ export class Game {
     this.shake = 7; this.sfx.hurt();
     this.burst(p.x, p.y - 50, "#c4473a", 14);
     this.parts.push({ x: p.x, y: p.y - 110, vx: 0, vy: -60, life: 0.8, max: 0.8, size: 26, color: "#c4473a", kind: "text", text: "OUCH!" });
+    const mate = teammateOf(this.activeCharacter);
+    this.assistWindow = p.hp > 0 && !this.assist && this.characters[mate].hp > 0 ? { teammate: mate, remaining: ASSIST_WINDOW_SECONDS } : null;
     if (p.hp <= 0) {
       p.hp = 0; p.dead = true;
       this.knockout = { character: this.activeCharacter, elapsed: 0 };
-      this.endTimer = -1; this.speech = null; this.banner = null; this.shake = 0;
+      this.endTimer = -1; this.speech = null; this.banner = null; this.shake = 0; this.assistWindow = null;
       this.clearInput(); this.sfx.stopMusic();
     }
     this.onState(this.state);
@@ -327,6 +356,85 @@ export class Game {
     if (scene.character === "nicole") this.speech = { character: "anby", text: ANBY_TAG_MESSAGE, remaining: TAG_BUBBLE_SECONDS };
     this.sfx.startMusic();
     this.onState(this.state);
+  }
+
+  private updateAssist(dt: number) {
+    const a = this.assist;
+    if (!a) return;
+    a.t += dt;
+    const b = this.b;
+    if (!a.hit && a.t >= ASSIST_STRIKE_AT) {
+      a.hit = true;
+      const bc = { x: b.x, y: b.y + b.hopY - 130 };
+      const anby = a.character === "anby";
+      if (b.state !== "dying" && b.state !== "intro" && b.hp > 0) {
+        b.hp -= ASSIST_DAMAGE[a.character]; b.flash = 0.15; this.shake = 9; this.sfx.hit();
+        this.burst(bc.x - a.face * 40, bc.y, anby ? "#c9d84a" : "#e46fa8", 12);
+        this.burst(bc.x - a.face * 20, bc.y - 20, anby ? "#5fb8d9" : "#7ad1c4", 8);
+        this.parts.push({ x: bc.x, y: bc.y - 120, vx: 0, vy: -50, life: 0.8, max: 0.8, size: 28, color: anby ? "#5fb8d9" : "#e46fa8", kind: "text", text: anby ? "SLASH!" : "BOOM!" });
+        this.checkPhase();
+      }
+      if (anby) this.sfx.slash(); else this.sfx.shoot();
+    }
+    if (a.t >= ASSIST_DURATION) this.assist = null;
+  }
+  private assistPos(a: NonNullable<Game["assist"]>) {
+    const rushEnd = ASSIST_STRIKE_AT, exitStart = ASSIST_DURATION - 0.22;
+    if (a.t < rushEnd) { const k = a.t / rushEnd; return a.fromX + (a.toX - a.fromX) * (1 - (1 - k) * (1 - k)); }
+    if (a.t < exitStart) return a.toX;
+    const k = (a.t - exitStart) / 0.22;
+    return a.toX + (a.fromX - a.toX) * k * k;
+  }
+  private drawAssist() {
+    const a = this.assist, c = this.c;
+    if (!a) return;
+    const x = this.assistPos(a), anby = a.character === "anby";
+    const fade = a.t > ASSIST_DURATION - 0.22 ? Math.max(0, (ASSIST_DURATION - a.t) / 0.22) : 1;
+    // rush trail
+    if (a.t < ASSIST_STRIKE_AT + 0.05) {
+      c.save(); c.globalAlpha = 0.6 * fade; c.lineCap = "round";
+      for (const [col, off, w] of [["#5fb8d9", 30, 10], ["#c9d84a", 55, 6]] as const) {
+        c.strokeStyle = anby ? col : (col === "#5fb8d9" ? "#e46fa8" : "#7ad1c4"); c.lineWidth = w;
+        c.beginPath(); c.moveTo(x - a.face * 160, a.y - off); c.lineTo(x - a.face * 20, a.y - off); c.stroke();
+      }
+      c.restore();
+    }
+    c.save(); c.globalAlpha = fade;
+    this.drawCharacter(a.character, x, a.y, a.face, false);
+    c.restore();
+    // strike effect
+    const s = a.t - ASSIST_STRIKE_AT;
+    if (s >= -0.05 && s < 0.25) {
+      const k = Math.max(0, s + 0.05) / 0.3;
+      c.save(); c.globalAlpha = 1 - k;
+      if (anby) {
+        c.lineCap = "round";
+        for (const [col, w, r] of [["#1d1612", 16, 120], ["#5fb8d9", 10, 120], ["#c9d84a", 4, 112]] as const) {
+          c.strokeStyle = col; c.lineWidth = w; c.beginPath();
+          c.arc(x + a.face * 30, a.y - 70, r, a.face > 0 ? -1.2 : Math.PI + 1.2, a.face > 0 ? 1.0 : Math.PI - 1.0, a.face < 0); c.stroke();
+        }
+      } else {
+        const bx = this.b.x, len = Math.abs(bx - x);
+        c.fillStyle = "#1d1612"; c.fillRect(Math.min(x, bx), a.y - 82, len, 34);
+        c.fillStyle = "#e46fa8"; c.fillRect(Math.min(x, bx), a.y - 78, len, 26);
+        c.fillStyle = "#fbf6ea"; c.fillRect(Math.min(x, bx), a.y - 69, len, 8);
+      }
+      c.restore();
+    }
+  }
+  private drawAssistCue() {
+    const w = this.assistWindow, c = this.c;
+    if (!w) return;
+    const k = Math.max(0, w.remaining / ASSIST_WINDOW_SECONDS);
+    const key = w.teammate === "anby" ? "1" : "2", name = w.teammate === "anby" ? "ANBY" : "NICOLE";
+    const pulse = 1 + Math.sin(this.time * 30) * 0.05;
+    c.save(); c.translate(W / 2, 140); c.scale(pulse, pulse);
+    rrect(c, -170, -26, 340, 52, 14); ink(c, "#f2d24c", 4);
+    c.font = "20px Rye, serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillStyle = INK;
+    c.fillText(`PRESS ${key} — ${name} ASSIST!`, 0, -4);
+    rrect(c, -150, 12, 300, 8, 4); c.fillStyle = "#e9dcc0"; c.fill();
+    if (k > 0) { rrect(c, -150, 12, 300 * k, 8, 4); c.fillStyle = "#c4473a"; c.fill(); }
+    c.restore();
   }
 
   private burst(x: number, y: number, color: string, n: number) {
@@ -528,6 +636,12 @@ export class Game {
     c.globalAlpha = 1;
     const p = this.p;
     if (!(p.inv > 0 && p.dashT <= 0 && Math.floor(this.time * 20) % 2 === 0 && !p.dead)) this.drawCharacter(this.activeCharacter, p.x, p.y, p.face, false);
+    if (this.assistWindow) { // timer ring around the injured character
+      const k = this.assistWindow.remaining / ASSIST_WINDOW_SECONDS;
+      c.save(); c.lineWidth = 6; c.strokeStyle = "#f2d24c"; c.beginPath();
+      c.arc(p.x, p.y - 60, 78, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0, k)); c.stroke(); c.restore();
+    }
+    this.drawAssist();
     for (const slash of this.melee) this.drawMelee(slash);
     for (const bl of this.bullets) this.drawBullet(bl);
     for (const e of this.eps) this.drawEP(e);
@@ -547,6 +661,7 @@ export class Game {
     c.drawImage(this.vignette, 0, 0);
     if (Math.random() < 0.06) { c.strokeStyle = "rgba(40,25,10,0.25)"; c.lineWidth = 1; c.beginPath(); const lx = rnd(0, W); c.moveTo(lx, 0); c.lineTo(lx + rnd(-10, 10), H); c.stroke(); }
     if (this.state !== "menu") this.drawHud();
+    if (this.state === "playing" || this.state === "paused") this.drawAssistCue();
     if (this.banner) this.drawBanner();
   }
 
