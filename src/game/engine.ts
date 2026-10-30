@@ -757,7 +757,7 @@ export class Game {
     }
     ell(c, f1x + 3, fy, 9, 5); ink(c, "#1f1b1c", 2.5);
     ell(c, f2x + 3, fy - (air ? 4 : 0), 9, 5); ink(c, "#1f1b1c", 2.5);
-    for (const [fx, footY] of [[f1x, fy], [f2x, fy - (air ? 4 : 0)]]) {
+    for (const [fx, footY] of [[f1x, fy], [f2x, fy - (air ? 4 : 0)]] as const) {
       c.beginPath(); c.moveTo(fx - 4, footY + 3); c.lineTo(fx + 10, footY + 3); c.strokeStyle = "#aeb5b8"; c.lineWidth = 2; c.stroke();
       c.beginPath(); c.moveTo(fx, footY - 2); c.lineTo(fx + 4, footY); c.strokeStyle = "#c9e94a"; c.lineWidth = 2; c.stroke();
     }

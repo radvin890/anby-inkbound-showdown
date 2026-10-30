@@ -13,6 +13,7 @@ function fixture() {
     input: { left: false, right: false, jump: false, shoot: true, dash: false },
     prev: { jump: false, dash: false }, bullets: [] as unknown[], melee: [] as unknown[], parts: [], eps: [], shadows: [],
     sfx: { slash: vi.fn(), shoot: vi.fn(), hit: vi.fn() },
+    onState: vi.fn(),
   };
   Object.assign(game, internal);
   return { game, internal, p, b };
