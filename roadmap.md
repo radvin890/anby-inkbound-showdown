@@ -4,6 +4,10 @@
 - [x] Update keyboard, HUD, tutorial, and touch controls.
 - [x] Fix existing errors and verify combat and switching.
 
+# Anby outfit only
+- [ ] Redraw Anby’s Street Streak color blocking, headphones, separate backpack, right-hip sheath and hand-held sword without changing behavior.
+- [ ] Check the artwork in gameplay and run existing regression tests.
+
 # Knockout / tag-out
 - [ ] Add a locked 2.5-second cartoon knockout and automatic surviving-character tag-out.
 - [ ] Show Anby's temporary speech bubble and both characters' health/status.
