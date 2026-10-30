@@ -185,7 +185,7 @@ export class Game {
   /** Returns true if the press was consumed as a Quick Assist (no character switch). */
   tryAssist(character: CharacterId): boolean {
     const w = this.assistWindow;
-    if (!w || this.state !== "playing" || this.controlsLocked || this.assist || this.b.state === "dying" || this.b.hp <= 0) return false;
+    if (!w || w.remaining <= 0 || this.state !== "playing" || this.controlsLocked || this.assist || this.b.state === "dying" || this.b.hp <= 0) return false;
     if (character !== w.teammate || this.characters[character].hp <= 0) return false;
     this.assistWindow = null; // consume: this damage event can never be assisted again
     const face = Math.sign(this.b.x - this.p.x) || 1;
