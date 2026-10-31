@@ -1,4 +1,6 @@
 # Character update
+- [ ] Add separately selectable streamed Endless Mode without changing character mechanics or boss mode.
+- [ ] Verify Endless terrain, combat, assists, switching, team defeat and results with tests and live gameplay.
 - [x] Add persistent character state and uninterrupted switching.
 - [x] Add Anby melee and Nicole briefcase attacks with distinct artwork.
 - [x] Update keyboard, HUD, tutorial, and touch controls.
