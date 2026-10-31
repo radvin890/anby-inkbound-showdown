@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Game, type GameState, type GameStats, type InputState } from "@/game/engine";
+import { Game, type GameMode, type GameState, type GameStats, type InputState } from "@/game/engine";
 import { Sfx } from "@/game/audio";
 import { characterForKey, type CharacterId } from "@/game/characters";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,7 @@ export function InkboundGame() {
   const [muted, setMuted] = useState(false);
   const [touch, setTouch] = useState(false);
   const [activeCharacter, setActiveCharacter] = useState<CharacterId>("anby");
+  const selectedMode = useRef<GameMode>("boss");
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -50,15 +51,16 @@ export function InkboundGame() {
     return () => { g.destroy(); window.removeEventListener("blur", onBlur); };
   }, []);
 
-  const begin = () => {
+  const begin = (mode: GameMode = "boss") => {
+    selectedMode.current = mode;
     sfxRef.current?.ensure(); sfxRef.current?.click();
     if (!seenTutorial) { setTutorial(true); return; }
-    gameRef.current?.start();
+    gameRef.current?.start(mode);
   };
   const closeTutorialAndPlay = () => {
     setTutorial(false); setSeenTutorial(true);
     sfxRef.current?.click();
-    gameRef.current?.start();
+    gameRef.current?.start(selectedMode.current);
   };
   const switchTo = (character: CharacterId) => {
     // During a Quick Assist window the teammate key triggers an assist instead of a switch.
@@ -81,7 +83,7 @@ export function InkboundGame() {
       }
       if (e.code === "Enter" && !e.repeat) {
         if (tutorial) closeTutorialAndPlay();
-        else if (g && (g.state === "menu" || g.state === "victory" || g.state === "defeat")) begin();
+        else if (g && (g.state === "menu" || g.state === "victory" || g.state === "defeat")) begin(g.state === "menu" ? "boss" : g.mode);
         return;
       }
       const k = KEYMAP[e.code];
@@ -121,7 +123,8 @@ export function InkboundGame() {
           <h1 className="ink-title">ANBY<span className="block text-[0.55em]">Inkbound Showdown</span></h1>
           <p className="persian" dir="rtl" lang="fa">انبی: نبرد جوهری</p>
           <div className="mt-5 flex flex-wrap justify-center gap-3">
-            <button className="ink-btn" onClick={begin} autoFocus>Start Fight</button>
+            <Button className="ink-btn h-auto" onClick={() => begin("boss")} autoFocus>Start Fight</Button>
+            <Button className="ink-btn ink-btn-alt h-auto" onClick={() => begin("endless")}>Endless Mode</Button>
             <button className="ink-btn ink-btn-alt" onClick={() => { sfxRef.current?.click(); setTutorial(true); }}>How to Play</button>
             <button className="ink-btn ink-btn-alt" onClick={toggleMute}>Sound: {muted ? "Off" : "On"}</button>
           </div>
@@ -135,7 +138,7 @@ export function InkboundGame() {
           <ul className="ink-legend">
             {CONTROLS.map(([k, v]) => (<li key={k}><kbd>{k}</kbd><span>{v}</span></li>))}
           </ul>
-          <p className="mt-3 max-w-md text-sm">Watch for the red <b>!</b> above Maestro Kettlewind — every attack is telegraphed. Jump gears, dodge falling sugar under the shadows, and read the beam warnings. Dash through danger!</p>
+          <p className="mt-3 max-w-md text-sm">{selectedMode.current === "endless" ? <>Jump gaps and raised paths. Watch the tin sentries’ red <b>!</b> before they strike. A hurt teammate opens a brief 1 / 2 assist window.</> : <>Watch for the red <b>!</b> above Maestro Kettlewind — every attack is telegraphed. Jump gears, dodge falling sugar under the shadows, and read the beam warnings. Dash through danger!</>}</p>
           {touch && <p className="mt-2 text-sm">On touch screens, use the on-screen buttons.</p>}
           <button className="ink-btn mt-4" onClick={closeTutorialAndPlay} autoFocus>Got it — Fight!</button>
         </Overlay>
@@ -157,16 +160,20 @@ export function InkboundGame() {
 
       {(state === "victory" || state === "defeat") && stats && (
         <Overlay>
-          <h2 className="ink-title text-[clamp(2rem,6vw,4rem)]">{state === "victory" ? "Knockout!" : "Out of Ink…"}</h2>
+          <h2 className="ink-title text-[clamp(2rem,6vw,4rem)]">{stats.mode === "endless" ? "End of the Run" : state === "victory" ? "Knockout!" : "Out of Ink…"}</h2>
           <p className="persian" dir="rtl" lang="fa">{state === "victory" ? "پیروزی!" : "دوباره تلاش کن"}</p>
-          <div className="ink-stats">
+          {stats.mode === "endless" ? <div className="ink-stats flex-wrap justify-center">
+            <div><span>Distance</span><b>{stats.distance ?? 0} m</b></div>
+            <div><span>Score</span><b>{stats.score ?? 0}</b></div>
+            <div><span>Enemies defeated</span><b>{stats.enemiesDefeated ?? 0}</b></div>
+          </div> : <div className="ink-stats">
             <div><span>Time</span><b>{stats.time.toFixed(1)}s</b></div>
             <div><span>Hits taken</span><b>{stats.hitsTaken}</b></div>
             {state === "victory" ? <div><span>Grade</span><b>{stats.grade}</b></div> : <div><span>Boss damaged</span><b>{stats.bossPct}%</b></div>}
-          </div>
+          </div>}
           <div className="mt-4 flex flex-wrap justify-center gap-3">
-            <button className="ink-btn" onClick={() => gameRef.current?.start()} autoFocus>{state === "victory" ? "Fight Again" : "Restart"}</button>
-            <button className="ink-btn ink-btn-alt" onClick={() => gameRef.current?.toMenu()}>Main Menu</button>
+            <Button className="ink-btn h-auto" onClick={() => gameRef.current?.start()} autoFocus>{stats.mode === "endless" ? "Retry Endless" : state === "victory" ? "Fight Again" : "Restart"}</Button>
+            <Button className="ink-btn ink-btn-alt h-auto" onClick={() => gameRef.current?.toMenu()}>Main Menu</Button>
           </div>
         </Overlay>
       )}

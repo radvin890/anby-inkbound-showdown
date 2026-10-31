@@ -1,4 +1,6 @@
 import type { Sfx } from "./audio";
+import { EndlessWorld, ENEMY_HEIGHT, type RunnerEnemy } from "./endless";
+export type GameMode = "boss" | "endless";
 import { ASSIST_WINDOW_SECONDS, ASSIST_HURT_TIMESCALE, ASSIST_DURATION, ASSIST_STRIKE_AT, ASSIST_DAMAGE, teammateOf, ANBY_TAG_MESSAGE, KNOCKOUT_SECONDS, TAG_BUBBLE_SECONDS, CHARACTER_ATTACKS, swordHitsBoss, type CharacterId } from "./characters";
 
 export const W = 960;
@@ -10,7 +12,7 @@ export const BOSS_MAX = 520;
 
 export type GameState = "menu" | "playing" | "paused" | "victory" | "defeat";
 export interface InputState { left: boolean; right: boolean; jump: boolean; shoot: boolean; dash: boolean }
-export interface GameStats { time: number; hitsTaken: number; bossPct: number; grade: string }
+export interface GameStats { time: number; hitsTaken: number; bossPct: number; grade: string; mode?: GameMode; distance?: number; score?: number; enemiesDefeated?: number }
 
 type EKind = "puff" | "lid" | "gear" | "cube" | "note";
 interface EProj { x: number; y: number; vx: number; vy: number; r: number; kind: EKind; g: number; life: number; bounces: number; rot: number; dead?: boolean }
@@ -46,6 +48,10 @@ export class Game {
   private last = 0;
   private scale = 1;
   state: GameState = "menu";
+  mode: GameMode = "boss";
+  private endless: EndlessWorld | null = null;
+  private assistTarget: RunnerEnemy | null = null;
+  get runStats() { return this.endless ? { distance: this.endless.distance, score: this.endless.score, enemiesDefeated: this.endless.defeated } : null; }
   private time = 0;
   private fightTime = 0;
   private hitsTaken = 0;
@@ -150,7 +156,10 @@ export class Game {
   }
   destroy() { cancelAnimationFrame(this.raf); this.ro.disconnect(); this.sfx.stopMusic(); }
 
-  start() {
+  start(mode: GameMode = this.mode) {
+    this.mode = mode;
+    this.endless = mode === "endless" ? new EndlessWorld() : null;
+    this.assistTarget = null;
     this.p = this.newPlayer();
     this.activeCharacter = "anby";
     this.characters = { anby: this.newPlayer(), nicole: this.newPlayer() };
@@ -161,13 +170,13 @@ export class Game {
     this.b = this.newBoss();
     this.bullets = []; this.eps = []; this.parts = []; this.ghosts = []; this.shadows = [];
     this.fightTime = 0; this.hitsTaken = 0; this.endTimer = -1; this.camX = 0;
-    this.banner = { text: "A KNOCKOUT AWAITS!", t: 0, max: 1.4 };
+    this.banner = { text: mode === "endless" ? "ENDLESS — ROLL ON!" : "A KNOCKOUT AWAITS!", t: 0, max: 1.4 };
     this.sfx.ensure(); this.sfx.startMusic();
     this.setState("playing");
   }
   pause() { if (this.state === "playing") { this.setState("paused"); this.sfx.stopMusic(); } }
   resume() { if (this.state === "paused") { this.last = performance.now(); this.sfx.ensure(); if (!this.knockout) this.sfx.startMusic(); this.setState("playing"); } }
-  toMenu() { this.sfx.stopMusic(); this.p = this.newPlayer(); this.activeCharacter = "anby"; this.characters = { anby: this.newPlayer(), nicole: this.newPlayer() }; this.knockout = null; this.speech = null; this.assistWindow = null; this.assist = null; this.clearInput(); this.b = this.newBoss(); this.eps = []; this.bullets = []; this.melee = []; this.setState("menu"); }
+  toMenu() { this.endless = null; this.assistTarget = null; this.mode = "boss"; this.sfx.stopMusic(); this.p = this.newPlayer(); this.activeCharacter = "anby"; this.characters = { anby: this.newPlayer(), nicole: this.newPlayer() }; this.knockout = null; this.speech = null; this.assistWindow = null; this.assist = null; this.clearInput(); this.b = this.newBoss(); this.eps = []; this.bullets = []; this.melee = []; this.setState("menu"); }
   get controlsLocked() { return Boolean(this.knockout) || this.p.dead; }
   get characterHud() {
     return {
@@ -187,11 +196,15 @@ export class Game {
     const w = this.assistWindow;
     if (!w || w.remaining <= 0 || this.state !== "playing" || this.controlsLocked || this.assist || this.b.state === "dying" || this.b.hp <= 0) return false;
     if (character !== w.teammate || this.characters[character].hp <= 0) return false;
-    this.assistWindow = null; // consume: this damage event can never be assisted again
-    const face = Math.sign(this.b.x - this.p.x) || 1;
+    const target = this.endless?.target(this.p.x);
+    if (this.mode === "endless" && !target) return false;
+    this.assistTarget = target ?? null;
+    const targetX = target?.x ?? this.b.x;
+    const face = Math.sign(targetX - this.p.x) || 1;
+    this.assistWindow = null; // consume exactly once, after confirming a live target
     const fromX = face > 0 ? this.camX - 90 : this.camX + W + 90;
-    const toX = character === "anby" ? this.b.x - face * 190 : this.b.x - face * 430;
-    this.assist = { character, t: 0, face, fromX, toX: clamp(toX, this.camX + 40, this.camX + W - 40), y: GROUND, hit: false };
+    const toX = character === "anby" ? targetX - face * (target ? 100 : 190) : targetX - face * 430;
+    this.assist = { character, t: 0, face, fromX, toX: clamp(toX, this.camX + 40, this.camX + W - 40), y: target?.y ?? GROUND, hit: false };
     this.sfx.dash();
     this.banner = { text: character === "anby" ? "ANBY ASSIST!" : "NICOLE ASSIST!", t: 0, max: 0.9 };
     this.onState(this.state);
@@ -238,7 +251,7 @@ export class Game {
     // Localized slow-motion: only the injured character's simulation is scaled.
     this.updatePlayer(this.assistWindow ? dt * ASSIST_HURT_TIMESCALE : dt);
     if (this.knockout) return;
-    this.updateBoss(dt);
+    if (this.endless) this.updateEndless(dt); else this.updateBoss(dt);
     if (this.knockout) return;
     this.updateProjectiles(dt);
     if (this.knockout) return;
@@ -248,11 +261,16 @@ export class Game {
     this.ghosts = this.ghosts.filter((g) => g.life > 0);
     this.shake = Math.max(0, this.shake - dt * 30);
     // camera
+    if (this.endless) {
+      this.camX = Math.max(this.camX, this.p.x - 300);
+      this.endless.stream(this.camX, this.p.x, this.fightTime);
+    } else {
     const mid = (this.p.x + this.b.x) / 2;
     let target = mid - W / 2;
     target = clamp(target, this.p.x - W + 140, this.p.x - 140);
     target = clamp(target, 0, WORLD - W);
     this.camX += (target - this.camX) * Math.min(1, dt * 5);
+    }
     if (this.endTimer >= 0) {
       this.endTimer -= dt;
       if (this.endTimer < 0) this.finish();
@@ -260,13 +278,13 @@ export class Game {
   }
 
   private finish() {
-    const won = this.b.hp <= 0;
+    const won = this.mode !== "endless" && this.b.hp <= 0;
     if (!won && (this.characterHud.anby > 0 || this.characterHud.nicole > 0)) return;
     const h = this.hitsTaken;
     const grade = !won ? "—" : h === 0 ? "A+" : h <= 1 ? "A" : h <= 3 ? "B" : "C";
     this.sfx.stopMusic();
     if (won) this.sfx.victory(); else this.sfx.defeat();
-    this.setState(won ? "victory" : "defeat", { time: this.fightTime, hitsTaken: h, bossPct: Math.round((1 - Math.max(0, this.b.hp) / BOSS_MAX) * 100), grade });
+    this.setState(won ? "victory" : "defeat", { time: this.fightTime, hitsTaken: h, bossPct: Math.round((1 - Math.max(0, this.b.hp) / BOSS_MAX) * 100), grade, mode: this.mode, ...(this.runStats ?? {}) });
   }
 
   private updatePlayer(dt: number) {
@@ -301,9 +319,21 @@ export class Game {
       p.vy += 2250 * dt;
       if (!i.jump && p.vy < 0) p.vy += 2600 * dt;
     }
-    p.x = clamp(p.x + p.vx * dt, 30, WORLD - 30);
+    p.x = clamp(p.x + p.vx * dt, this.endless ? this.camX + 30 : 30, this.endless ? Number.POSITIVE_INFINITY : WORLD - 30);
+    const previousY = p.y;
     p.y += p.vy * dt;
-    if (p.y >= GROUND) { if (!p.onGround && p.vy > 300) this.parts.push({ x: p.x, y: GROUND, vx: 0, vy: 0, life: 0.25, max: 0.25, size: 14, color: INK, kind: "ring" }); p.y = GROUND; p.vy = 0; p.onGround = true; p.coyote = 0.1; }
+    if (this.endless) {
+      const top = this.endless.landing(p.x, previousY, p.y, p.vy);
+      if (top !== null) { p.y = top; p.vy = 0; p.onGround = true; p.coyote = 0.1; }
+      else { p.onGround = false; p.coyote -= dt; }
+      if (p.y > H + 100) {
+        const safe = this.endless.safeGround(p.x);
+        Object.assign(p, safe); p.vy = 0; p.onGround = true;
+        // A missed gap uses the existing damage/KO path, never discards a living teammate.
+        p.inv = 0; p.dashT = 0; this.hurtPlayer(-1);
+        if (this.knockout) return;
+      }
+    } else if (p.y >= GROUND) { if (!p.onGround && p.vy > 300) this.parts.push({ x: p.x, y: GROUND, vx: 0, vy: 0, life: 0.25, max: 0.25, size: 14, color: INK, kind: "ring" }); p.y = GROUND; p.vy = 0; p.onGround = true; p.coyote = 0.1; }
     else { p.onGround = false; p.coyote -= dt; }
     p.anim += dt * (Math.abs(p.vx) > 20 && p.onGround ? 14 : 3);
     if (i.shoot && p.shootCd <= 0) {
@@ -319,7 +349,7 @@ export class Game {
     }
     // contact with boss
     const b = this.b;
-    if (b.state !== "dying" && Math.hypot(p.x - b.x, (p.y - 45) - (b.y + b.hopY - 130)) < 110) this.hurtPlayer(Math.sign(p.x - b.x) || 1);
+    if (!this.endless && b.state !== "dying" && Math.hypot(p.x - b.x, (p.y - 45) - (b.y + b.hopY - 130)) < 110) this.hurtPlayer(Math.sign(p.x - b.x) || 1);
   }
 
   private hurtPlayer(fromDir: number) {
@@ -365,9 +395,15 @@ export class Game {
     const b = this.b;
     if (!a.hit && a.t >= ASSIST_STRIKE_AT) {
       a.hit = true;
-      const bc = { x: b.x, y: b.y + b.hopY - 130 };
+      const target = this.assistTarget;
+      const bc = target ? { x: target.x, y: target.y - 55 } : { x: b.x, y: b.y + b.hopY - 130 };
       const anby = a.character === "anby";
-      if (b.state !== "dying" && b.state !== "intro" && b.hp > 0) {
+      if (this.endless) {
+        if (target && this.endless.damage(target, ASSIST_DAMAGE[a.character])) {
+          this.shake = 9; this.sfx.hit();
+          this.burst(bc.x, bc.y, anby ? "#5fb8d9" : "#e46fa8", 20);
+        }
+      } else if (b.state !== "dying" && b.state !== "intro" && b.hp > 0) {
         b.hp -= ASSIST_DAMAGE[a.character]; b.flash = 0.15; this.shake = 9; this.sfx.hit();
         this.burst(bc.x - a.face * 40, bc.y, anby ? "#c9d84a" : "#e46fa8", 12);
         this.burst(bc.x - a.face * 20, bc.y - 20, anby ? "#5fb8d9" : "#7ad1c4", 8);
@@ -414,7 +450,7 @@ export class Game {
           c.arc(x + a.face * 30, a.y - 70, r, a.face > 0 ? -1.2 : Math.PI + 1.2, a.face > 0 ? 1.0 : Math.PI - 1.0, a.face < 0); c.stroke();
         }
       } else {
-        const bx = this.b.x, len = Math.abs(bx - x);
+        const bx = this.assistTarget?.x ?? this.b.x, len = Math.abs(bx - x);
         c.fillStyle = "#1d1612"; c.fillRect(Math.min(x, bx), a.y - 82, len, 34);
         c.fillStyle = "#e46fa8"; c.fillRect(Math.min(x, bx), a.y - 78, len, 26);
         c.fillStyle = "#fbf6ea"; c.fillRect(Math.min(x, bx), a.y - 69, len, 8);
@@ -549,6 +585,7 @@ export class Game {
 
   private updateProjectiles(dt: number) {
     if (this.knockout) return;
+    if (this.endless) { this.updateEndlessCombat(dt); return; }
     const b = this.b, p = this.p;
     const bc = { x: b.x, y: b.y + b.hopY - 130 };
     for (const slash of this.melee) {
@@ -594,6 +631,80 @@ export class Game {
     for (const s of this.shadows) s.t += dt;
   }
 
+  private updateEndless(dt: number) {
+    const world = this.endless;
+    if (!world) return;
+    world.update(dt, this.p, this.fightTime, direction => {
+      if (!this.knockout) this.hurtPlayer(direction);
+    }, () => this.sfx.tele());
+  }
+
+  private updateEndlessCombat(dt: number) {
+    const world = this.endless;
+    if (!world) return;
+    for (const slash of this.melee) {
+      slash.life -= dt;
+      if (slash.hit) continue;
+      const enemy = world.enemies.find(e => e.hp > 0 && (e.x - slash.x) * slash.face >= 0 && (e.x - slash.x) * slash.face <= CHARACTER_ATTACKS.anby.reach + 22 && Math.abs((slash.y - 60) - (e.y - 55)) < 65);
+      if (enemy && world.damage(enemy, CHARACTER_ATTACKS.anby.damage)) {
+        slash.hit = true; this.sfx.hit(); this.burst(enemy.x, enemy.y - 55, "#c9d84a", 6);
+      }
+    }
+    this.melee = this.melee.filter(s => s.life > 0);
+    for (const bl of this.bullets) {
+      const oldX = bl.x; bl.x += bl.vx * dt; bl.life -= dt;
+      if (bl.life <= 0) { bl.dead = true; continue; }
+      const enemy = world.enemies.filter(e => e.hp > 0 && e.x + 23 >= Math.min(oldX, bl.x) && e.x - 23 <= Math.max(oldX, bl.x) && Math.abs(bl.y - (e.y - 55)) < 50)
+        .sort((a, b) => Math.abs(a.x - oldX) - Math.abs(b.x - oldX))[0];
+      if (enemy && world.damage(enemy, CHARACTER_ATTACKS.nicole.damage)) {
+        bl.dead = true; this.sfx.hit(); this.burst(enemy.x, enemy.y - 55, "#e46fa8", 5);
+      }
+    }
+    this.bullets = this.bullets.filter(b => !b.dead && b.x >= this.camX - 100 && b.x <= this.camX + W + 900);
+  }
+
+  private drawEndless() {
+    const world = this.endless, c = this.c;
+    if (!world) return;
+    for (const p of world.platforms) {
+      if (p.end < this.camX - 30 || p.x > this.camX + W + 30) continue;
+      const height = p.kind === "ground" ? H - p.y + 10 : p.kind === "obstacle" ? GROUND - p.y : 16;
+      rrect(c, p.x, p.y, p.end - p.x, height, 3);
+      ink(c, p.kind === "platform" ? "#7c9b85" : p.kind === "obstacle" ? "#b98a55" : "#a8714c", 3);
+      c.fillStyle = "#c9d84a"; c.fillRect(p.x + 2, p.y + 2, p.end - p.x - 4, 5);
+      if (p.kind === "ground") {
+        c.strokeStyle = INK; c.lineWidth = 1;
+        for (let x = p.x + 60; x < p.end; x += 80) { c.beginPath(); c.moveTo(x, p.y + 10); c.lineTo(x - 20, H); c.stroke(); }
+      } else if (p.kind === "obstacle") {
+        c.beginPath(); c.moveTo(p.x + 8, p.y + 10); c.lineTo(p.end - 8, GROUND - 5); c.moveTo(p.end - 8, p.y + 10); c.lineTo(p.x + 8, GROUND - 5); ink(c, null, 2);
+      }
+    }
+    for (const e of world.enemies) {
+      if (e.hp <= 0 || e.x < this.camX - 70 || e.x > this.camX + W + 70) continue;
+      c.save(); c.translate(e.x, e.y); c.scale(e.face, 1);
+      const step = e.phase === "approach" || e.phase === "strike" ? Math.sin(e.anim) * 8 : 0;
+      const body = e.flash > 0 ? "#fbf6ea" : e.variant ? "#71988c" : "#be6557";
+      // Original wind-up tin sentries: character-height heads, hose limbs, spring antenna.
+      hose(c, -9, -32, -12 - step, -7, -6, 7, "#393039");
+      hose(c, 9, -32, 12 + step, -7, 6, 7, "#393039");
+      ell(c, -13 - step, -4, 13, 6); ink(c, "#393039", 2);
+      ell(c, 14 + step, -4, 13, 6); ink(c, "#393039", 2);
+      rrect(c, -22, -76, 44, 46, 6); ink(c, body, 3);
+      hose(c, 15, -66, e.phase === "strike" ? 45 : 28, -45, 8, 7, "#d4b458");
+      ell(c, e.phase === "strike" ? 47 : 30, -45, 10, 10); ink(c, "#393039", 2);
+      rrect(c, -24, -100, 48, 32, 7); ink(c, body, 3);
+      for (const x of [0, 14]) { ell(c, x, -85, 6, 8); ink(c, "#fbf6ea", 2); ell(c, x + 2, -84, 2, 4); ink(c, INK, 1); }
+      c.beginPath(); c.moveTo(-10, -101); c.lineTo(-8, -ENEMY_HEIGHT); c.lineTo(4, -ENEMY_HEIGHT); ink(c, null, 2);
+      ell(c, 0, -48, 10, 10); ink(c, "#d4b458", 2);
+      c.beginPath(); c.moveTo(-5, -48); c.lineTo(5, -48); ink(c, null, 2);
+      c.restore();
+      if (e.phase === "wind") {
+        ell(c, e.x, e.y - 130, 16, 19); ink(c, "#c4473a", 2);
+        c.font = "bold 25px Rye, serif"; c.fillStyle = "#fbf6ea"; c.textAlign = "center"; c.fillText("!", e.x, e.y - 121);
+      }
+    }
+  }
+
   private checkPhase() {
     const b = this.b;
     const ratio = b.hp / BOSS_MAX;
@@ -624,14 +735,13 @@ export class Game {
     const cx = this.camX;
     c.save();
     c.translate(-cx, 0);
-    this.drawProps();
+    if (this.endless) this.drawEndless(); else this.drawProps();
     // shadows/telegraphs
     for (const s of this.shadows) {
       const k = Math.min(1, s.t / 0.9);
       ell(c, s.x, GROUND + 4, 10 + 16 * k, 5 + 3 * k); c.fillStyle = `rgba(29,22,18,${0.25 + 0.35 * k})`; c.fill();
     }
-    this.drawLaser();
-    this.drawBoss();
+    if (!this.endless) { this.drawLaser(); this.drawBoss(); }
     for (const g of this.ghosts) { c.globalAlpha = g.life * 2; this.drawCharacter(g.character, g.x, g.y, g.face, true); }
     c.globalAlpha = 1;
     const p = this.p;
@@ -672,7 +782,7 @@ export class Game {
     sky.addColorStop(0, p3 ? "#d99a6c" : "#e7c48c"); sky.addColorStop(1, "#f4e4bf");
     c.fillStyle = sky; c.fillRect(0, 0, W, H);
     // sun with rays
-    const sunX = W * 0.72 - cx * 0.04, sunY = 110;
+    const sunX = W * 0.72 - (this.endless ? cx % 1200 : cx) * 0.04, sunY = 110;
     c.save(); c.translate(sunX, sunY); c.rotate(t * 0.1);
     c.fillStyle = "rgba(246,213,138,0.45)";
     for (let k = 0; k < 14; k++) { c.rotate(Math.PI * 2 / 14); c.beginPath(); c.moveTo(0, 0); c.lineTo(600, -40); c.lineTo(600, 40); c.fill(); }
@@ -687,12 +797,12 @@ export class Game {
       ink(c, "#f7ecd3", 2.5);
     }
     for (const [x, h, w] of this.scenery.hills) {
-      const px = x - cx * 0.25;
+      const px = this.endless ? ((x - cx * 0.25) % (W + 700) + W + 700) % (W + 700) - 350 : x - cx * 0.25;
       if (px < -w - 50 || px > W + w) continue;
       c.beginPath(); c.moveTo(px - w, GROUND); c.quadraticCurveTo(px, GROUND - h * 2, px + w, GROUND); ink(c, "#b4a578", 2.5);
     }
     for (const [x, w, h, tower] of this.scenery.bldg) {
-      const px = x - cx * 0.55;
+      const px = this.endless ? ((x - cx * 0.55) % (W + 400) + W + 400) % (W + 400) - 200 : x - cx * 0.55;
       if (px < -150 || px > W + 50) continue;
       const top = GROUND - 20 - h;
       if (tower) {
@@ -706,6 +816,7 @@ export class Game {
         for (let wy = top + 14; wy < GROUND - 40; wy += 30) for (let wx = px + 10; wx < px + w - 16; wx += 22) c.fillRect(wx, wy, 9, 13);
       }
     }
+    if (this.endless) { c.fillStyle = "#536b68"; c.fillRect(0, GROUND, W, H - GROUND); return; }
     // stage floor
     c.fillStyle = "#8c5a3c"; c.fillRect(0, GROUND, W, H - GROUND);
     c.strokeStyle = "rgba(29,22,18,0.55)"; c.lineWidth = 2;
@@ -733,7 +844,7 @@ export class Game {
   private drawForeground() {
     const c = this.c;
     for (const [x, s] of this.scenery.tufts) {
-      const px = x - this.camX * 1.25;
+      const px = this.endless ? ((x - this.camX * 1.25) % (W + 300) + W + 300) % (W + 300) - 150 : x - this.camX * 1.25;
       if (px < -60 || px > W + 60) continue;
       const by = H + 6;
       c.beginPath(); c.moveTo(px - 30 * s, by);
@@ -1120,6 +1231,17 @@ export class Game {
     rrect(c, 20, 82, 144, 10, 5); ink(c, "#e9dcc0", 2.5);
     rrect(c, 20, 82, 144 * dr, 10, 5); c.fillStyle = dr >= 1 ? "#c9d84a" : "#9c9a7a"; c.fill();
     c.font = "11px Rye, serif"; c.fillStyle = INK; c.fillText("DASH", 170, 92);
+    if (this.endless) {
+      c.font = "18px Rye, serif"; c.textAlign = "center"; c.lineWidth = 4; c.strokeStyle = INK;
+      const text = `ENDLESS · ${this.endless.distance} m · ${this.endless.score} pts`;
+      c.strokeText(text, 555, 30); c.fillStyle = "#fbf6ea"; c.fillText(text, 555, 30);
+      c.font = "13px Rye, serif";
+      c.fillText(`${this.endless.defeated} DEFEATED`, 555, 52);
+      c.textAlign = "left";
+      const hp = this.characterHud;
+      c.fillText(`1 ANBY ${hp.anby > 0 ? hp.anby + "/5" : "KO"}   2 NICOLE ${hp.nicole > 0 ? hp.nicole + "/5" : "KO"}`, 20, 140);
+      return;
+    }
     // boss bar
     const bw = 380, bx = W / 2 - bw / 2 + 60, by = 24;
     c.font = "15px Rye, serif"; c.textAlign = "center";
