@@ -100,4 +100,18 @@ describe("Shared Endless character behavior", () => {
     engine.update(0); expect(game).toMatchObject({ camX: 4700 }); expect(b).toMatchObject({ hp: BOSS_MAX, t: 2.2 });
     p.x = 4750; engine.update(0); expect(game).toMatchObject({ camX: 4700 });
   });
+  it("expired Endless assist closes and the teammate key switches normally", () => {
+    const { game, engine } = fixture(); engine.hurtPlayer(-1);
+    engine.update(0.51); expect(engine.assistWindow).toBeNull();
+    expect(game.switchCharacter("nicole")).toBe(true); expect(game.activeCharacter).toBe("nicole");
+  });
+  it("Endless assists cannot trigger while paused", () => {
+    const { game, engine } = fixture(); engine.hurtPlayer(-1);
+    Object.assign(game, { state: "paused" }); expect(game.tryAssist("nicole")).toBe(false);
+  });
+  it("Anby knockout tags Nicole without ending the run", () => {
+    const { game, engine, p } = fixture(); p.hp = 1; engine.hurtPlayer(-1);
+    engine.updateKnockout(KNOCKOUT_SECONDS);
+    expect(game.activeCharacter).toBe("nicole"); expect(p.hp).toBe(5); expect(game.state).toBe("playing");
+  });
 });

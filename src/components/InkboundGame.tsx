@@ -83,7 +83,7 @@ export function InkboundGame() {
       }
       if (e.code === "Enter" && !e.repeat) {
         if (tutorial) closeTutorialAndPlay();
-        else if (g && (g.state === "menu" || g.state === "victory" || g.state === "defeat")) begin();
+        else if (g && (g.state === "menu" || g.state === "victory" || g.state === "defeat")) begin(g.state === "menu" ? "boss" : g.mode);
         return;
       }
       const k = KEYMAP[e.code];
