@@ -775,6 +775,16 @@ export class Game {
     if (this.banner) this.drawBanner();
   }
 
+  /** Paints a still of the existing town backdrop and idle character art onto another 960x540 context (story trailer). */
+  paintTrailerScene(ctx: CanvasRenderingContext2D, camX: number, time: number, actors: { character: CharacterId; x: number; face: number }[]) {
+    const saved = { c: this.c, p: this.p, camX: this.camX, time: this.time, endless: this.endless };
+    this.c = ctx; this.p = this.newPlayer(); this.camX = camX; this.time = time; this.endless = null;
+    try {
+      this.drawBackground();
+      for (const a of actors) { this.p.onGround = true; this.drawCharacter(a.character, a.x, GROUND, a.face, false); }
+    } finally { Object.assign(this, saved); }
+  }
+
   private drawBackground() {
     const c = this.c, cx = this.camX, t = this.time;
     const sky = c.createLinearGradient(0, 0, 0, GROUND);
