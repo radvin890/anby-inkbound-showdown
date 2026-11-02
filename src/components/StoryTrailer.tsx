@@ -87,20 +87,14 @@ export function StoryTrailer({ game, sfx, onExit }: { game: Game | null; sfx: Sf
       } else if (scene.id === "black") {
         // pure cut to black
       } else if (scene.id === "squad") {
+        const sx = 640 - p * 30;
+        game.paintTrailerScene(c, 1500 - p * 80, t, []);
+        c.fillStyle = "rgba(15,22,40,0.75)"; c.fillRect(0, 0, W, H);
+        // silhouette: character art filled with solid ink, identity hidden
         o.clearRect(0, 0, W, H);
-        game.paintTrailerScene(o, 1500 - p * 80, t, [{ character: "anby", x: 640 - p * 30, face: -1 }]);
+        game.paintTrailerScene(o, 0, t, [{ character: "anby", x: sx, face: -1 }], false);
+        o.globalCompositeOperation = "source-in"; o.fillStyle = "#05060a"; o.fillRect(0, 0, W, H); o.globalCompositeOperation = "source-over";
         c.drawImage(off, 0, 0);
-        c.fillStyle = "rgba(15,22,40,0.72)"; c.fillRect(0, 0, W, H);
-        // silhouette: redraw only the figure in solid ink
-        o.clearRect(0, 0, W, H);
-        game.paintTrailerScene(o, 0, t, []); o.clearRect(0, 0, W, H);
-        o.save(); o.globalCompositeOperation = "source-over";
-        // character-only layer
-        const figure = document.createElement("canvas"); figure.width = W; figure.height = H;
-        const f = figure.getContext("2d")!;
-        game.paintTrailerScene(f, 0, t, []); f.clearRect(0, 0, W, H);
-        o.restore();
-        c.save(); c.fillStyle = "#05060a"; c.beginPath(); c.ellipse(640 - p * 30, 380, 46, 90, 0, 0, Math.PI * 2); c.fill(); c.restore();
         // glowing eyes hint
         c.fillStyle = `rgba(214,60,50,${0.5 + 0.5 * Math.sin(t * 4)})`;
         c.beginPath(); c.arc(628 - p * 30, 330, 4, 0, Math.PI * 2); c.arc(648 - p * 30, 330, 4, 0, Math.PI * 2); c.fill();
