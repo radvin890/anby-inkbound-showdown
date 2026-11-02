@@ -97,7 +97,7 @@ export function StoryTrailer({ game, sfx, onExit }: { game: Game | null; sfx: Sf
         c.drawImage(off, 0, 0);
         // glowing eyes hint
         c.fillStyle = `rgba(214,60,50,${0.5 + 0.5 * Math.sin(t * 4)})`;
-        c.beginPath(); c.arc(628 - p * 30, 330, 4, 0, Math.PI * 2); c.arc(648 - p * 30, 330, 4, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(628 - p * 30, 362, 4, 0, Math.PI * 2); c.moveTo(652 - p * 30, 362); c.arc(648 - p * 30, 362, 4, 0, Math.PI * 2); c.fill();
         caption(c, "SILVER SQUAD", 90, 34, Math.min(1, local / 1.2), "#c9d4dc");
       } else if (scene.id === "reveal") {
         const flash = Math.max(0, 1 - local / 0.4);

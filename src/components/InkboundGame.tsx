@@ -3,6 +3,7 @@ import { Game, type GameMode, type GameState, type GameStats, type InputState } 
 import { Sfx } from "@/game/audio";
 import { characterForKey, type CharacterId } from "@/game/characters";
 import { Button } from "@/components/ui/button";
+import { StoryTrailer } from "@/components/StoryTrailer";
 
 type Key = keyof InputState;
 const KEYMAP: Record<string, Key> = {
@@ -30,6 +31,7 @@ export function InkboundGame() {
   const [seenTutorial, setSeenTutorial] = useState(false);
   const [muted, setMuted] = useState(false);
   const [touch, setTouch] = useState(false);
+  const [story, setStory] = useState(false);
   const [activeCharacter, setActiveCharacter] = useState<CharacterId>("anby");
   const selectedMode = useRef<GameMode>("boss");
 
@@ -70,6 +72,7 @@ export function InkboundGame() {
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
+      if (story) return; // trailer owns the keyboard; gameplay keys stay inert
       const g = gameRef.current;
       const character = characterForKey(e.code, e.target);
       if (character) {
@@ -117,7 +120,7 @@ export function InkboundGame() {
         </div>
       )}
 
-      {state === "menu" && !tutorial && (
+      {state === "menu" && !tutorial && !story && (
         <Overlay>
           <p className="ink-kicker">An original rubber-hose boss bout</p>
           <h1 className="ink-title">ANBY<span className="block text-[0.55em]">Inkbound Showdown</span></h1>
@@ -125,6 +128,7 @@ export function InkboundGame() {
           <div className="mt-5 flex flex-wrap justify-center gap-3">
             <Button className="ink-btn h-auto" onClick={() => begin("boss")} autoFocus>Start Fight</Button>
             <Button className="ink-btn ink-btn-alt h-auto" onClick={() => begin("endless")}>Endless Mode</Button>
+            <Button className="ink-btn ink-btn-alt h-auto" onClick={() => { sfxRef.current?.ensure(); sfxRef.current?.click(); setStory(true); }}>STORY MODE</Button>
             <button className="ink-btn ink-btn-alt" onClick={() => { sfxRef.current?.click(); setTutorial(true); }}>How to Play</button>
             <button className="ink-btn ink-btn-alt" onClick={toggleMute}>Sound: {muted ? "Off" : "On"}</button>
           </div>
@@ -177,6 +181,8 @@ export function InkboundGame() {
           </div>
         </Overlay>
       )}
+
+      {story && state === "menu" && <StoryTrailer game={gameRef.current} sfx={sfxRef.current} onExit={() => setStory(false)} />}
 
       {touch && state === "playing" && (
         <div className="touch-layer">
