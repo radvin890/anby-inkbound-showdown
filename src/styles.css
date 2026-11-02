@@ -241,3 +241,8 @@
 @media (prefers-reduced-motion: reduce) {
   .ink-overlay { animation: none; }
 }
+
+@layer components {
+  .story-trailer { position: absolute; inset: 0; z-index: 20; background: #000; animation: ink-in 0.4s ease-out; }
+  .story-skip { position: absolute; right: 0.9rem; top: 0.9rem; font-size: clamp(0.8rem, 1.6vw, 1rem); }
+}

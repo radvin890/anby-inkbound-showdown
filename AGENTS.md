@@ -13,3 +13,4 @@
 - Define character attack rules and keyboard selection in src/game/characters.ts and cover them with focused game tests so combat and input boundaries stay consistent.
 - Render both characters with original procedural canvas art using the existing ink drawing helpers, keeping sprite dimensions and collision assumptions aligned.
 - Keep streamed terrain and small-enemy rules in src/game/endless.ts; the shared canvas engine owns both modes and reuses character actions, damage, assists and team knockout, so boss behavior stays isolated.
+- Story Mode is a trailer viewer only: beat timeline lives in src/game/trailer.ts (tested) and StoryTrailer paints scenes via Game.paintTrailerScene, so the trailer reuses existing art without touching gameplay state.
