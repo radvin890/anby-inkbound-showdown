@@ -4,6 +4,8 @@ import { Sfx } from "@/game/audio";
 import { characterForKey, type CharacterId } from "@/game/characters";
 import { Button } from "@/components/ui/button";
 import { StoryTrailer } from "@/components/StoryTrailer";
+import { PrologueDialogue } from "@/components/PrologueDialogue";
+import { PROLOGUE_INTRO, PROLOGUE_OUTRO } from "@/game/prologue";
 
 type Key = keyof InputState;
 const KEYMAP: Record<string, Key> = {
@@ -32,6 +34,7 @@ export function InkboundGame() {
   const [muted, setMuted] = useState(false);
   const [touch, setTouch] = useState(false);
   const [story, setStory] = useState(false);
+  const [prologue, setPrologue] = useState<null | "intro" | "outro" | "end">(null);
   const [activeCharacter, setActiveCharacter] = useState<CharacterId>("anby");
   const selectedMode = useRef<GameMode>("boss");
 
@@ -72,7 +75,7 @@ export function InkboundGame() {
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (story) return; // trailer owns the keyboard; gameplay keys stay inert
+      if (story || prologue === "intro" || prologue === "outro") return; // trailer owns the keyboard; gameplay keys stay inert
       const g = gameRef.current;
       const character = characterForKey(e.code, e.target);
       if (character) {
@@ -120,7 +123,7 @@ export function InkboundGame() {
         </div>
       )}
 
-      {state === "menu" && !tutorial && !story && (
+      {state === "menu" && !tutorial && !story && !prologue && (
         <Overlay>
           <p className="ink-kicker">An original rubber-hose boss bout</p>
           <h1 className="ink-title">ANBY<span className="block text-[0.55em]">Inkbound Showdown</span></h1>
@@ -128,7 +131,8 @@ export function InkboundGame() {
           <div className="mt-5 flex flex-wrap justify-center gap-3">
             <Button className="ink-btn h-auto" onClick={() => begin("boss")} autoFocus>Start Fight</Button>
             <Button className="ink-btn ink-btn-alt h-auto" onClick={() => begin("endless")}>Endless Mode</Button>
-            <Button className="ink-btn ink-btn-alt h-auto" onClick={() => { sfxRef.current?.ensure(); sfxRef.current?.click(); setStory(true); }}>STORY MODE</Button>
+            <Button className="ink-btn ink-btn-alt h-auto" onClick={() => { sfxRef.current?.ensure(); sfxRef.current?.click(); setPrologue("intro"); }}>STORY MODE</Button>
+            <Button className="ink-btn ink-btn-alt h-auto" onClick={() => { sfxRef.current?.ensure(); sfxRef.current?.click(); setStory(true); }}>WATCH TRAILER</Button>
             <button className="ink-btn ink-btn-alt" onClick={() => { sfxRef.current?.click(); setTutorial(true); }}>How to Play</button>
             <button className="ink-btn ink-btn-alt" onClick={toggleMute}>Sound: {muted ? "Off" : "On"}</button>
           </div>
@@ -142,7 +146,7 @@ export function InkboundGame() {
           <ul className="ink-legend">
             {CONTROLS.map(([k, v]) => (<li key={k}><kbd>{k}</kbd><span>{v}</span></li>))}
           </ul>
-          <p className="mt-3 max-w-md text-sm">{selectedMode.current === "endless" ? <>Jump gaps and raised paths. Watch the tin sentries’ red <b>!</b> before they strike. A hurt teammate opens a brief 1 / 2 assist window.</> : <>Watch for the red <b>!</b> above Maestro Kettlewind — every attack is telegraphed. Jump gears, dodge falling sugar under the shadows, and read the beam warnings. Dash through danger!</>}</p>
+          <p className="mt-3 max-w-md text-sm">{selectedMode.current === "prologue" ? <>Follow the smoke and stop two tin sentries. Watch for their red <b>!</b> before they strike.</> : selectedMode.current === "endless" ? <>Jump gaps and raised paths. Watch the tin sentries’ red <b>!</b> before they strike. A hurt teammate opens a brief 1 / 2 assist window.</> : <>Watch for the red <b>!</b> above Maestro Kettlewind — every attack is telegraphed. Jump gears, dodge falling sugar under the shadows, and read the beam warnings. Dash through danger!</>}</p>
           {touch && <p className="mt-2 text-sm">On touch screens, use the on-screen buttons.</p>}
           <button className="ink-btn mt-4" onClick={closeTutorialAndPlay} autoFocus>Got it — Fight!</button>
         </Overlay>
@@ -162,7 +166,7 @@ export function InkboundGame() {
         </Overlay>
       )}
 
-      {(state === "victory" || state === "defeat") && stats && (
+      {(state === "victory" || state === "defeat") && stats && !(stats.mode === "prologue" && state === "victory") && (
         <Overlay>
           <h2 className="ink-title text-[clamp(2rem,6vw,4rem)]">{stats.mode === "endless" ? "End of the Run" : state === "victory" ? "Knockout!" : "Out of Ink…"}</h2>
           <p className="persian" dir="rtl" lang="fa">{state === "victory" ? "پیروزی!" : "دوباره تلاش کن"}</p>
@@ -176,12 +180,21 @@ export function InkboundGame() {
             {state === "victory" ? <div><span>Grade</span><b>{stats.grade}</b></div> : <div><span>Boss damaged</span><b>{stats.bossPct}%</b></div>}
           </div>}
           <div className="mt-4 flex flex-wrap justify-center gap-3">
-            <Button className="ink-btn h-auto" onClick={() => gameRef.current?.start()} autoFocus>{stats.mode === "endless" ? "Retry Endless" : state === "victory" ? "Fight Again" : "Restart"}</Button>
+            <Button className="ink-btn h-auto" onClick={() => gameRef.current?.start()} autoFocus>{stats.mode === "prologue" ? "Retry" : stats.mode === "endless" ? "Retry Endless" : state === "victory" ? "Fight Again" : "Restart"}</Button>
             <Button className="ink-btn ink-btn-alt h-auto" onClick={() => gameRef.current?.toMenu()}>Main Menu</Button>
           </div>
         </Overlay>
       )}
 
+      {prologue === "intro" && state === "menu" && <PrologueDialogue game={gameRef.current} sfx={sfxRef.current} lines={PROLOGUE_INTRO} onDone={() => { setPrologue(null); begin("prologue"); }} />}
+      {state === "victory" && stats?.mode === "prologue" && prologue !== "end" && <PrologueDialogue game={gameRef.current} sfx={sfxRef.current} lines={PROLOGUE_OUTRO} onDone={() => setPrologue("end")} />}
+      {prologue === "end" && state === "victory" && (
+        <Overlay>
+          <h2 className="ink-title text-[clamp(2rem,6vw,4rem)]">Prologue Complete</h2>
+          <p className="mt-2 font-semibold">Chapter 1 coming next.</p>
+          <div className="mt-4 flex justify-center"><Button className="ink-btn h-auto" onClick={() => { setPrologue(null); gameRef.current?.toMenu(); }} autoFocus>Main Menu</Button></div>
+        </Overlay>
+      )}
       {story && state === "menu" && <StoryTrailer game={gameRef.current} sfx={sfxRef.current} onExit={() => setStory(false)} />}
 
       {touch && state === "playing" && (
