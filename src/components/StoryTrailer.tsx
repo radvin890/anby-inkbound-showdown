@@ -4,6 +4,7 @@ import type { Sfx } from "@/game/audio";
 import { TRAILER_SCENES, TRAILER_LENGTH, sceneAt } from "@/game/trailer";
 
 const INK = "#1d1612";
+const GROUND_Y = 456;
 
 function caption(c: CanvasRenderingContext2D, text: string, y: number, size: number, alpha: number, color = "#f4e4bf") {
   c.save(); c.globalAlpha = alpha; c.textAlign = "center"; c.textBaseline = "middle";
@@ -92,21 +93,22 @@ export function StoryTrailer({ game, sfx, onExit }: { game: Game | null; sfx: Sf
         c.fillStyle = "rgba(15,22,40,0.75)"; c.fillRect(0, 0, W, H);
         // silhouette: character art filled with solid ink, identity hidden
         o.clearRect(0, 0, W, H);
-        game.paintTrailerScene(o, 0, t, [{ character: "anby", x: sx, face: -1 }], false);
+        game.paintTrailerScene(o, 0, t, [{ character: "twiggy", x: sx, face: -1 }], false);
         o.globalCompositeOperation = "source-in"; o.fillStyle = "#05060a"; o.fillRect(0, 0, W, H); o.globalCompositeOperation = "source-over";
         c.drawImage(off, 0, 0);
         // glowing eyes hint
-        c.fillStyle = `rgba(214,60,50,${0.5 + 0.5 * Math.sin(t * 4)})`;
-        c.beginPath(); c.arc(628 - p * 30, 362, 4, 0, Math.PI * 2); c.moveTo(652 - p * 30, 362); c.arc(648 - p * 30, 362, 4, 0, Math.PI * 2); c.fill();
+        c.fillStyle = `rgba(224,160,50,${0.5 + 0.5 * Math.sin(t * 4)})`;
+        c.beginPath(); c.arc(sx - 7, GROUND_Y - 94, 3.5, 0, Math.PI * 2); c.fill(); // single amber eye
+        c.fillStyle = "rgba(201,212,220,0.9)"; c.font = "18px serif"; c.textAlign = "center"; c.fillText("★", sx + 4, GROUND_Y - 89);
         caption(c, "SILVER SQUAD", 90, 34, Math.min(1, local / 1.2), "#c9d4dc");
       } else if (scene.id === "reveal") {
         const flash = Math.max(0, 1 - local / 0.4);
         o.clearRect(0, 0, W, H);
-        game.paintTrailerScene(o, 1200, t, [{ character: "anby", x: 340, face: 1 }, { character: "anby", x: 620, face: -1 }]);
+        game.paintTrailerScene(o, 1200, t, [{ character: "anby", x: 340, face: 1 }, { character: "twiggy", x: 620, face: -1 }]);
         c.drawImage(off, 0, 0);
-        // right half becomes the impostor: crimson ink wash
+        // right half: Twiggy under a cold silver-violet wash
         c.save(); c.beginPath(); c.rect(W / 2, 0, W / 2, H); c.clip();
-        c.fillStyle = "rgba(120,20,30,0.55)"; c.fillRect(W / 2, 0, W / 2, H);
+        c.fillStyle = "rgba(70,60,110,0.35)"; c.fillRect(W / 2, 0, W / 2, H);
         c.restore();
         c.strokeStyle = INK; c.lineWidth = 6; c.beginPath(); c.moveTo(W / 2, 0); c.lineTo(W / 2, H); c.stroke();
         caption(c, "TWIGGY", 110, 60, Math.min(1, Math.max(0, (local - 0.6) / 0.6)), "#e8604c");
