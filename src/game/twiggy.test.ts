@@ -11,7 +11,6 @@ describe("Twiggy boss foundation", () => {
     expect(twiggyPhaseFor(0)).toBe(3);
   });
   it("is not selectable as a playable character", () => {
-    const key = { code: "Digit3", key: "3", target: null } as unknown as KeyboardEvent;
-    expect(characterForKey(key, "playing" as never)).toBeNull();
+    expect(characterForKey("Digit3", null)).toBeNull();
   });
 });
