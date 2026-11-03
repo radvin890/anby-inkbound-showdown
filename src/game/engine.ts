@@ -1,7 +1,8 @@
 import { drawTwiggy } from "./twiggy";
 import type { Sfx } from "./audio";
+import { objectiveMet, objectiveProgress, PROLOGUE_OBJECTIVE } from "./prologue";
 import { EndlessWorld, ENEMY_HEIGHT, type RunnerEnemy } from "./endless";
-export type GameMode = "boss" | "endless";
+export type GameMode = "boss" | "endless" | "prologue";
 import { ASSIST_WINDOW_SECONDS, ASSIST_HURT_TIMESCALE, ASSIST_DURATION, ASSIST_STRIKE_AT, ASSIST_DAMAGE, teammateOf, ANBY_TAG_MESSAGE, KNOCKOUT_SECONDS, TAG_BUBBLE_SECONDS, CHARACTER_ATTACKS, swordHitsBoss, type CharacterId } from "./characters";
 
 export const W = 960;
@@ -159,7 +160,7 @@ export class Game {
 
   start(mode: GameMode = this.mode) {
     this.mode = mode;
-    this.endless = mode === "endless" ? new EndlessWorld() : null;
+    this.endless = mode !== "boss" ? new EndlessWorld() : null;
     this.assistTarget = null;
     this.p = this.newPlayer();
     this.activeCharacter = "anby";
@@ -171,7 +172,7 @@ export class Game {
     this.b = this.newBoss();
     this.bullets = []; this.eps = []; this.parts = []; this.ghosts = []; this.shadows = [];
     this.fightTime = 0; this.hitsTaken = 0; this.endTimer = -1; this.camX = 0;
-    this.banner = { text: mode === "endless" ? "ENDLESS — ROLL ON!" : "A KNOCKOUT AWAITS!", t: 0, max: 1.4 };
+    this.banner = { text: mode === "prologue" ? "FOLLOW THE SMOKE!" : mode === "endless" ? "ENDLESS — ROLL ON!" : "A KNOCKOUT AWAITS!", t: 0, max: 1.4 };
     this.sfx.ensure(); this.sfx.startMusic();
     this.setState("playing");
   }
@@ -198,7 +199,7 @@ export class Game {
     if (!w || w.remaining <= 0 || this.state !== "playing" || this.controlsLocked || this.assist || this.b.state === "dying" || this.b.hp <= 0) return false;
     if (character !== w.teammate || this.characters[character].hp <= 0) return false;
     const target = this.endless?.target(this.p.x);
-    if (this.mode === "endless" && !target) return false;
+    if (this.mode !== "boss" && !target) return false;
     this.assistTarget = target ?? null;
     const targetX = target?.x ?? this.b.x;
     const face = Math.sign(targetX - this.p.x) || 1;
@@ -265,6 +266,11 @@ export class Game {
     if (this.endless) {
       this.camX = Math.max(this.camX, this.p.x - 300);
       this.endless.stream(this.camX, this.p.x, this.fightTime);
+      if (this.mode === "prologue" && this.state === "playing" && objectiveMet(this.endless.distance, this.endless.defeated)) {
+        this.sfx.stopMusic(); this.sfx.victory();
+        this.setState("victory", { time: this.fightTime, hitsTaken: this.hitsTaken, bossPct: 0, grade: "—", mode: "prologue", ...(this.runStats ?? {}) });
+        return;
+      }
     } else {
     const mid = (this.p.x + this.b.x) / 2;
     let target = mid - W / 2;
@@ -279,7 +285,7 @@ export class Game {
   }
 
   private finish() {
-    const won = this.mode !== "endless" && this.b.hp <= 0;
+    const won = this.mode === "boss" && this.b.hp <= 0;
     if (!won && (this.characterHud.anby > 0 || this.characterHud.nicole > 0)) return;
     const h = this.hitsTaken;
     const grade = !won ? "—" : h === 0 ? "A+" : h <= 1 ? "A" : h <= 3 ? "B" : "C";
@@ -1244,10 +1250,11 @@ export class Game {
     c.font = "11px Rye, serif"; c.fillStyle = INK; c.fillText("DASH", 170, 92);
     if (this.endless) {
       c.font = "18px Rye, serif"; c.textAlign = "center"; c.lineWidth = 4; c.strokeStyle = INK;
-      const text = `ENDLESS · ${this.endless.distance} m · ${this.endless.score} pts`;
+      const pg = objectiveProgress(this.endless.distance, this.endless.defeated);
+      const text = this.mode === "prologue" ? `FOLLOW THE SMOKE · ${pg.distance}/${PROLOGUE_OBJECTIVE.distance} m` : `ENDLESS · ${this.endless.distance} m · ${this.endless.score} pts`;
       c.strokeText(text, 555, 30); c.fillStyle = "#fbf6ea"; c.fillText(text, 555, 30);
       c.font = "13px Rye, serif";
-      c.fillText(`${this.endless.defeated} DEFEATED`, 555, 52);
+      c.fillText(this.mode === "prologue" ? `STOP THE SENTRIES · ${pg.enemies}/${PROLOGUE_OBJECTIVE.enemies}` : `${this.endless.defeated} DEFEATED`, 555, 52);
       c.textAlign = "left";
       const hp = this.characterHud;
       c.fillText(`1 ANBY ${hp.anby > 0 ? hp.anby + "/5" : "KO"}   2 NICOLE ${hp.nicole > 0 ? hp.nicole + "/5" : "KO"}`, 20, 140);
