@@ -199,7 +199,7 @@ export class Game {
     if (!w || w.remaining <= 0 || this.state !== "playing" || this.controlsLocked || this.assist || this.b.state === "dying" || this.b.hp <= 0) return false;
     if (character !== w.teammate || this.characters[character].hp <= 0) return false;
     const target = this.endless?.target(this.p.x);
-    if (this.mode !== "boss" && !target) return false;
+    if (this.endless && !target) return false;
     this.assistTarget = target ?? null;
     const targetX = target?.x ?? this.b.x;
     const face = Math.sign(targetX - this.p.x) || 1;
