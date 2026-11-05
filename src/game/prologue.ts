@@ -1,5 +1,5 @@
 // Story Mode Prologue: cutscene panels around one short playable investigation run.
-export type PrologueScene = "peace" | "incident" | "witness" | "squad" | "end";
+export type PrologueScene = "peace" | "incident" | "witness" | "squad" | "end" | "site" | "facility" | "monitor" | "static";
 export interface DialogueLine { speaker: string; text: string; scene: PrologueScene }
 
 export const PROLOGUE_OBJECTIVE = { distance: 90, enemies: 2 } as const;

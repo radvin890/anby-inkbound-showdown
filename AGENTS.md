@@ -15,3 +15,4 @@
 - Keep streamed terrain and small-enemy rules in src/game/endless.ts; the shared canvas engine owns both modes and reuses character actions, damage, assists and team knockout, so boss behavior stays isolated.
 - Story Mode is a trailer viewer only: beat timeline lives in src/game/trailer.ts (tested) and StoryTrailer paints scenes via Game.paintTrailerScene, so the trailer reuses existing art without touching gameplay state.
 - Twiggy (secret final boss, not playable) lives in src/game/twiggy.ts: three-phase data, phase thresholds (tested) and standalone procedural art; not yet wired into a live fight so existing modes stay untouched.
+- Story chapters reuse the streamed Endless world as their own GameMode; chapter data, clues and win rules live in src/game/chapterN.ts (tested) and cutscenes reuse PrologueDialogue scenes, so existing modes stay untouched.
