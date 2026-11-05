@@ -279,8 +279,8 @@ export class Game {
         if (this.clueNote && (this.clueNote.life -= dt) <= 0) this.clueNote = null;
         for (const clue of cluesCollectedBy(this.p.x, this.clues)) {
           this.clues.add(clue.id); this.sfx.click();
-          this.banner = { text: `REPORT ${this.clues.size}/${CHAPTER1_CLUES.length}: ${clue.title}`, t: 0, max: 2.6 };
-          this.clueNote = { text: `"${clue.text}"`, life: 4 };
+          this.banner = { text: `REPORT ${this.clues.size}/${CHAPTER1_CLUES.length}`, t: 0, max: 2.6 };
+          this.clueNote = { text: `${clue.title}: "${clue.text}"`, life: 4 };
         }
         if (chapter1Met(this.endless.distance, this.endless.defeated)) {
           this.sfx.stopMusic();
