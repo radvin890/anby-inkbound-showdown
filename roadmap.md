@@ -15,3 +15,5 @@
 - [x] Preserve encounter state, block knocked-out selection, and keep touch/keyboard controls functional.
 - [x] Test both knockout orders, total defeat, boss preservation, and live gameplay in Endless.
 - [ ] Earlier boss-mode two-character HUD request remains outside the Endless-only scope; Endless displays both characters' HP/KO and retains Anby's existing tag bubble.
+# Chapter 1: Ghosts of Silver Squad
+- [x] Intro cutscene, facility corridor level (150 m, 3 sentries, 3 reports), monitor outro, complete screen, replay; 44 tests pass, intro + level played in browser.
