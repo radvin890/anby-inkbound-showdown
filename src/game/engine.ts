@@ -173,7 +173,7 @@ export class Game {
     this.b = this.newBoss();
     this.bullets = []; this.eps = []; this.parts = []; this.ghosts = []; this.shadows = [];
     this.fightTime = 0; this.hitsTaken = 0; this.endTimer = -1; this.camX = 0;
-    this.clues = new Set();
+    this.clues = new Set(); this.clueNote = null;
     this.banner = { text: mode === "chapter1" ? "GHOSTS OF SILVER SQUAD" : mode === "prologue" ? "FOLLOW THE SMOKE!" : mode === "endless" ? "ENDLESS — ROLL ON!" : "A KNOCKOUT AWAITS!", t: 0, max: 1.4 };
     this.sfx.ensure(); this.sfx.startMusic();
     this.setState("playing");
@@ -182,6 +182,7 @@ export class Game {
   resume() { if (this.state === "paused") { this.last = performance.now(); this.sfx.ensure(); if (!this.knockout) this.sfx.startMusic(); this.setState("playing"); } }
   toMenu() { this.endless = null; this.assistTarget = null; this.mode = "boss"; this.sfx.stopMusic(); this.p = this.newPlayer(); this.activeCharacter = "anby"; this.characters = { anby: this.newPlayer(), nicole: this.newPlayer() }; this.knockout = null; this.speech = null; this.assistWindow = null; this.assist = null; this.clearInput(); this.b = this.newBoss(); this.eps = []; this.bullets = []; this.melee = []; this.setState("menu"); }
   clues = new Set<string>();
+  clueNote: { text: string; life: number } | null = null;
   get controlsLocked() { return Boolean(this.knockout) || this.p.dead; }
   get characterHud() {
     return {
@@ -275,10 +276,11 @@ export class Game {
         return;
       }
       if (this.mode === "chapter1" && this.state === "playing") {
+        if (this.clueNote && (this.clueNote.life -= dt) <= 0) this.clueNote = null;
         for (const clue of cluesCollectedBy(this.p.x, this.clues)) {
           this.clues.add(clue.id); this.sfx.click();
           this.banner = { text: `REPORT ${this.clues.size}/${CHAPTER1_CLUES.length}: ${clue.title}`, t: 0, max: 2.6 };
-          this.texts.push({ x: clueX(clue.distance), y: GROUND - 150, text: clue.text, life: 2.6 });
+          this.clueNote = { text: `"${clue.text}"`, life: 4 };
         }
         if (chapter1Met(this.endless.distance, this.endless.defeated)) {
           this.sfx.stopMusic();
@@ -1298,6 +1300,7 @@ export class Game {
       c.strokeText(text, 555, 30); c.fillStyle = "#fbf6ea"; c.fillText(text, 555, 30);
       c.font = "13px Rye, serif";
       c.fillText(ch1 ? `SENTRIES ${Math.min(this.endless.defeated, CHAPTER1_OBJECTIVE.enemies)}/${CHAPTER1_OBJECTIVE.enemies} · REPORTS ${this.clues.size}/${CHAPTER1_CLUES.length}` : this.mode === "prologue" ? `STOP THE SENTRIES · ${pg.enemies}/${PROLOGUE_OBJECTIVE.enemies}` : `${this.endless.defeated} DEFEATED`, 555, 52);
+      if (ch1 && this.clueNote) { c.font = "15px 'Special Elite', monospace"; c.globalAlpha = Math.min(1, this.clueNote.life); c.strokeText(this.clueNote.text, 555, 76); c.fillText(this.clueNote.text, 555, 76); c.globalAlpha = 1; c.font = "13px Rye, serif"; }
       c.textAlign = "left";
       const hp = this.characterHud;
       c.fillText(`1 ANBY ${hp.anby > 0 ? hp.anby + "/5" : "KO"}   2 NICOLE ${hp.nicole > 0 ? hp.nicole + "/5" : "KO"}`, 20, 140);
