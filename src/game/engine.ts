@@ -1,8 +1,9 @@
 import { drawTwiggy } from "./twiggy";
 import type { Sfx } from "./audio";
 import { objectiveMet, objectiveProgress, PROLOGUE_OBJECTIVE } from "./prologue";
+import { CHAPTER1_CLUES, CHAPTER1_OBJECTIVE, chapter1Met, clueX, cluesCollectedBy } from "./chapter1";
 import { EndlessWorld, ENEMY_HEIGHT, type RunnerEnemy } from "./endless";
-export type GameMode = "boss" | "endless" | "prologue";
+export type GameMode = "boss" | "endless" | "prologue" | "chapter1";
 import { ASSIST_WINDOW_SECONDS, ASSIST_HURT_TIMESCALE, ASSIST_DURATION, ASSIST_STRIKE_AT, ASSIST_DAMAGE, teammateOf, ANBY_TAG_MESSAGE, KNOCKOUT_SECONDS, TAG_BUBBLE_SECONDS, CHARACTER_ATTACKS, swordHitsBoss, type CharacterId } from "./characters";
 
 export const W = 960;
@@ -172,13 +173,15 @@ export class Game {
     this.b = this.newBoss();
     this.bullets = []; this.eps = []; this.parts = []; this.ghosts = []; this.shadows = [];
     this.fightTime = 0; this.hitsTaken = 0; this.endTimer = -1; this.camX = 0;
-    this.banner = { text: mode === "prologue" ? "FOLLOW THE SMOKE!" : mode === "endless" ? "ENDLESS — ROLL ON!" : "A KNOCKOUT AWAITS!", t: 0, max: 1.4 };
+    this.clues = new Set();
+    this.banner = { text: mode === "chapter1" ? "GHOSTS OF SILVER SQUAD" : mode === "prologue" ? "FOLLOW THE SMOKE!" : mode === "endless" ? "ENDLESS — ROLL ON!" : "A KNOCKOUT AWAITS!", t: 0, max: 1.4 };
     this.sfx.ensure(); this.sfx.startMusic();
     this.setState("playing");
   }
   pause() { if (this.state === "playing") { this.setState("paused"); this.sfx.stopMusic(); } }
   resume() { if (this.state === "paused") { this.last = performance.now(); this.sfx.ensure(); if (!this.knockout) this.sfx.startMusic(); this.setState("playing"); } }
   toMenu() { this.endless = null; this.assistTarget = null; this.mode = "boss"; this.sfx.stopMusic(); this.p = this.newPlayer(); this.activeCharacter = "anby"; this.characters = { anby: this.newPlayer(), nicole: this.newPlayer() }; this.knockout = null; this.speech = null; this.assistWindow = null; this.assist = null; this.clearInput(); this.b = this.newBoss(); this.eps = []; this.bullets = []; this.melee = []; this.setState("menu"); }
+  clues = new Set<string>();
   get controlsLocked() { return Boolean(this.knockout) || this.p.dead; }
   get characterHud() {
     return {
@@ -270,6 +273,18 @@ export class Game {
         this.sfx.stopMusic(); this.sfx.victory();
         this.setState("victory", { time: this.fightTime, hitsTaken: this.hitsTaken, bossPct: 0, grade: "—", mode: "prologue", ...(this.runStats ?? {}) });
         return;
+      }
+      if (this.mode === "chapter1" && this.state === "playing") {
+        for (const clue of cluesCollectedBy(this.p.x, this.clues)) {
+          this.clues.add(clue.id); this.sfx.click();
+          this.banner = { text: `REPORT ${this.clues.size}/${CHAPTER1_CLUES.length}: ${clue.title}`, t: 0, max: 2.6 };
+          this.texts.push({ x: clueX(clue.distance), y: GROUND - 150, text: clue.text, life: 2.6 });
+        }
+        if (chapter1Met(this.endless.distance, this.endless.defeated)) {
+          this.sfx.stopMusic();
+          this.setState("victory", { time: this.fightTime, hitsTaken: this.hitsTaken, bossPct: 0, grade: "—", mode: "chapter1", ...(this.runStats ?? {}) });
+          return;
+        }
       }
     } else {
     const mid = (this.p.x + this.b.x) / 2;
@@ -739,10 +754,12 @@ export class Game {
     c.save();
     c.translate(sx, sy);
     this.drawBackground();
+    if (this.mode === "chapter1" && this.endless) this.drawFacility();
     const cx = this.camX;
     c.save();
     c.translate(-cx, 0);
     if (this.endless) this.drawEndless(); else this.drawProps();
+    if (this.mode === "chapter1" && this.endless) this.drawClues();
     // shadows/telegraphs
     for (const s of this.shadows) {
       const k = Math.min(1, s.t / 0.9);
@@ -792,6 +809,31 @@ export class Game {
     } finally { Object.assign(this, saved); }
   }
 
+  /** Cold steel overlay turning the town backdrop into abandoned facility corridors. */
+  private drawFacility() {
+    const c = this.c, cx = this.camX;
+    c.fillStyle = "rgba(38,44,54,0.72)"; c.fillRect(0, 0, W, H);
+    c.fillStyle = "#4a4f57"; c.fillRect(0, 0, W, 46); c.strokeStyle = INK; c.lineWidth = 3; c.beginPath(); c.moveTo(0, 46); c.lineTo(W, 46); c.stroke();
+    for (let x = -((cx * 0.6) % 220); x < W + 220; x += 220) {
+      c.fillStyle = "#3b4048"; c.fillRect(x, 46, 34, GROUND - 46); c.strokeRect(x, 46, 34, GROUND - 46);
+      const lit = Math.sin(this.time * 7 + x) > -0.6;
+      c.fillStyle = lit ? "rgba(214,232,150,0.85)" : "rgba(80,90,70,0.6)"; c.fillRect(x + 70, 52, 80, 8);
+      c.fillStyle = "#2c3038"; c.fillRect(x + 90, 160, 70, 46); c.strokeRect(x + 90, 160, 70, 46);
+      c.fillStyle = "#9aa3ad"; c.font = "11px Rye, serif"; c.fillText("S·SQ", x + 104, 188);
+    }
+  }
+  private drawClues() {
+    const c = this.c;
+    for (const clue of CHAPTER1_CLUES) {
+      if (this.clues.has(clue.id)) continue;
+      const x = clueX(clue.distance), y = GROUND - 30 + Math.sin(this.time * 3 + x) * 5;
+      c.save(); c.translate(x, y); c.rotate(-0.15);
+      c.fillStyle = "rgba(242,210,76,0.35)"; c.beginPath(); c.arc(0, 0, 26, 0, Math.PI * 2); c.fill();
+      rrect(c, -14, -18, 28, 36, 3); ink(c, "#efe4c8", 3);
+      c.strokeStyle = "#6b5d48"; c.lineWidth = 2; for (let k = 0; k < 4; k++) { c.beginPath(); c.moveTo(-8, -9 + k * 7); c.lineTo(8, -9 + k * 7); c.stroke(); }
+      c.restore();
+    }
+  }
   private drawBackground() {
     const c = this.c, cx = this.camX, t = this.time;
     const sky = c.createLinearGradient(0, 0, 0, GROUND);
@@ -1251,10 +1293,11 @@ export class Game {
     if (this.endless) {
       c.font = "18px Rye, serif"; c.textAlign = "center"; c.lineWidth = 4; c.strokeStyle = INK;
       const pg = objectiveProgress(this.endless.distance, this.endless.defeated);
-      const text = this.mode === "prologue" ? `FOLLOW THE SMOKE · ${pg.distance}/${PROLOGUE_OBJECTIVE.distance} m` : `ENDLESS · ${this.endless.distance} m · ${this.endless.score} pts`;
+      const ch1 = this.mode === "chapter1";
+      const text = ch1 ? `SILVER SQUAD FACILITY · ${Math.min(this.endless.distance, CHAPTER1_OBJECTIVE.distance)}/${CHAPTER1_OBJECTIVE.distance} m` : this.mode === "prologue" ? `FOLLOW THE SMOKE · ${pg.distance}/${PROLOGUE_OBJECTIVE.distance} m` : `ENDLESS · ${this.endless.distance} m · ${this.endless.score} pts`;
       c.strokeText(text, 555, 30); c.fillStyle = "#fbf6ea"; c.fillText(text, 555, 30);
       c.font = "13px Rye, serif";
-      c.fillText(this.mode === "prologue" ? `STOP THE SENTRIES · ${pg.enemies}/${PROLOGUE_OBJECTIVE.enemies}` : `${this.endless.defeated} DEFEATED`, 555, 52);
+      c.fillText(ch1 ? `SENTRIES ${Math.min(this.endless.defeated, CHAPTER1_OBJECTIVE.enemies)}/${CHAPTER1_OBJECTIVE.enemies} · REPORTS ${this.clues.size}/${CHAPTER1_CLUES.length}` : this.mode === "prologue" ? `STOP THE SENTRIES · ${pg.enemies}/${PROLOGUE_OBJECTIVE.enemies}` : `${this.endless.defeated} DEFEATED`, 555, 52);
       c.textAlign = "left";
       const hp = this.characterHud;
       c.fillText(`1 ANBY ${hp.anby > 0 ? hp.anby + "/5" : "KO"}   2 NICOLE ${hp.nicole > 0 ? hp.nicole + "/5" : "KO"}`, 20, 140);
